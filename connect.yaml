@@ -9,6 +9,8 @@ deployAs:
           description: The cloud identifier.
         - key: ENTRY_POINT_URI_PATH
           description: The entry point URI path.
+        - key: APPLICATION_URL
+          description: The application URL.
       securedConfiguration: []
   - name: service
     applicationType: service
