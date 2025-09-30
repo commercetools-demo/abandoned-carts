@@ -1,0 +1,36 @@
+query FetchCartDiscounts($limit: Int, $offset: Int) {
+  cartDiscounts(limit: $limit, offset: $offset) {
+    total
+    count
+    offset
+    results {
+      id
+      key
+      nameAllLocales {
+        locale
+        value
+      }
+      descriptionAllLocales {
+        locale
+        value
+      }
+      cartPredicate
+      value {
+        type
+        ... on RelativeCartDiscountValue {
+          permyriad
+        }
+        ... on AbsoluteCartDiscountValue {
+          money {
+            centAmount
+            currencyCode
+          }
+        }
+      }
+      isActive
+      validFrom
+      validUntil
+      requiresDiscountCode
+    }
+  }
+}

@@ -1,0 +1,2 @@
+fetch the configuration custom object when running the service and use the variables in that object to query for abandoned carts using the time frames specified
+If I click on one of the lines in the abandoned carts list, create a pop-up window that shows me the full JSON data for that custom object

@@ -1,0 +1,18 @@
+query FetchCarts($limit: Int, $offset: Int) {
+  carts(limit: $limit, offset: $offset) {
+    total
+    count
+    offset
+    results {
+      id
+      version
+      customerEmail
+      totalPrice {
+        centAmount
+        currencyCode
+      }
+      createdAt
+      lastModifiedAt
+    }
+  }
+}
