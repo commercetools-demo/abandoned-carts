@@ -5,13 +5,16 @@ deployAs:
       standardConfiguration:
         - key: CUSTOM_APPLICATION_ID
           description: The ID of the custom application.
+          default: 'TODO'
         - key: CLOUD_IDENTIFIER
           description: The cloud identifier.
+          default: 'gcp-us'
         - key: ENTRY_POINT_URI_PATH
           description: The entry point URI path.
+          default: 'abandoned-carts'
         - key: APPLICATION_URL
           description: The application URL.
-      securedConfiguration: []
+          default: 'https://your_app_hostname.com'
   - name: service
     applicationType: service
     endpoint: /service
