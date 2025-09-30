@@ -9,7 +9,7 @@ const config = {
   cloudIdentifier: '${env:CLOUD_IDENTIFIER}',
   env: {
     development: {
-      initialProjectKey: 'us-store',
+      initialProjectKey: 'medtronic-poc',
     },
     production: {
       applicationId: '${env:CUSTOM_APPLICATION_ID}',

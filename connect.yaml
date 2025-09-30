@@ -5,13 +5,13 @@ deployAs:
       standardConfiguration:
         - key: CUSTOM_APPLICATION_ID
           description: The ID of the custom application.
-          default: 'TODO'
+          required: true
         - key: CLOUD_IDENTIFIER
           description: The cloud identifier.
           default: 'gcp-us'
         - key: ENTRY_POINT_URI_PATH
           description: The entry point URI path.
-          default: 'abandoned-carts'
+          required: true
         - key: APPLICATION_URL
           description: The application URL.
           default: 'https://your_app_hostname.com'
