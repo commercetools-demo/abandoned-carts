@@ -30,17 +30,34 @@ const Carts = () => {
   // Transform cart data for the table
   const cartRows = cartsPaginatedResult?.results?.map((cart) => {
     const cartData = cart.value || {};
+    const abandonmentDate = cartData.abandonmentDate 
+      ? new Date(cartData.abandonmentDate)
+      : new Date(cart.createdAt);
+    
+    // Create dummy data for new columns
+    const emailSentDate = new Date(abandonmentDate);
+    emailSentDate.setDate(emailSentDate.getDate() + 1); // Email sent 1 day after abandonment
+    
+    const cartConvertedDate = new Date(emailSentDate);
+    const randomDays = Math.floor(Math.random() * 4) + 1; // Random 1-4 days
+    cartConvertedDate.setDate(cartConvertedDate.getDate() + randomDays);
+    
     return {
       id: cart.id,
       email: cartData.customerEmail || 'N/A',
       total: cartData.cartTotal ? `$${cartData.cartTotal}` : 'N/A',
-      abandonmentDate: cartData.abandonmentDate 
-        ? new Date(cartData.abandonmentDate).toLocaleDateString()
-        : new Date(cart.createdAt).toLocaleDateString(),
+      abandonmentDate: abandonmentDate.toLocaleDateString(),
+      emailSent: emailSentDate.toLocaleDateString(),
+      cartConverted: cartConvertedDate.toLocaleDateString(),
+      // Store the original Date objects for sorting
+      abandonmentDateObj: abandonmentDate,
       // Store the original cart data for the modal
       originalCart: cart,
     };
   }) || [];
+
+  // Sort by abandonment date in descending order (most recent first)
+  cartRows.sort((a, b) => b.abandonmentDateObj - a.abandonmentDateObj);
 
   const columns = [
     {
@@ -54,6 +71,14 @@ const Carts = () => {
     {
       key: 'abandonmentDate',
       label: intl.formatMessage(messages.abandonmentDateColumn),
+    },
+    {
+      key: 'emailSent',
+      label: intl.formatMessage(messages.emailSentColumn),
+    },
+    {
+      key: 'cartConverted',
+      label: intl.formatMessage(messages.cartConvertedColumn),
     },
   ];
 
@@ -100,6 +125,10 @@ const Carts = () => {
                   return <Text.Body>{item.total}</Text.Body>;
                 case 'abandonmentDate':
                   return <Text.Body>{item.abandonmentDate}</Text.Body>;
+                case 'emailSent':
+                  return <Text.Body>{item.emailSent}</Text.Body>;
+                case 'cartConverted':
+                  return <Text.Body>{item.cartConverted}</Text.Body>;
                 default:
                   return <Text.Body>{item[column.key]}</Text.Body>;
               }

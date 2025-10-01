@@ -21,6 +21,14 @@ export default defineMessages({
     id: 'Carts.abandonmentDateColumn',
     defaultMessage: 'Abandonment Date',
   },
+  emailSentColumn: {
+    id: 'Carts.emailSentColumn',
+    defaultMessage: 'Email Sent',
+  },
+  cartConvertedColumn: {
+    id: 'Carts.cartConvertedColumn',
+    defaultMessage: 'Cart Converted',
+  },
   noCartsFound: {
     id: 'Carts.noCartsFound',
     defaultMessage: 'No abandoned carts found.',
