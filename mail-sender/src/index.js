@@ -1,0 +1,37 @@
+import 'dotenv/config';
+
+import express from 'express';
+import bodyParser from 'body-parser';
+
+// Import routes
+import MailSendingRoutes from './routes/mail-sending.route.js';
+import { logger } from './utils/logger.utils.js';
+
+import readConfiguration from './utils/config.utils.js';
+import { errorMiddleware } from './middleware/error.middleware.js';
+
+// Read env variables
+readConfiguration();
+
+const PORT = process.env.PORT || 8081;
+
+// Create the express app
+const app = express();
+app.disable('x-powered-by');
+
+// Define configurations
+app.use(bodyParser.json());
+app.use(bodyParser.urlencoded({ extended: true }));
+
+// Define routes
+app.use('/', MailSendingRoutes);
+
+// Global error handler
+app.use(errorMiddleware);
+
+// Listen the application
+const server = app.listen(PORT, () => {
+  logger.info(`⚡️ Event application listening on port ${PORT}`);
+});
+
+export default server;

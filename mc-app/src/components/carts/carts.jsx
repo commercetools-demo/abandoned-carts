@@ -34,30 +34,39 @@ const Carts = () => {
       ? new Date(cartData.abandonmentDate)
       : new Date(cart.createdAt);
     
-    // Create dummy data for new columns
-    const emailSentDate = new Date(abandonmentDate);
-    emailSentDate.setDate(emailSentDate.getDate() + 1); // Email sent 1 day after abandonment
+    // Use real data from custom objects
+    const emailSentDate = cartData.emailSentDate 
+      ? new Date(cartData.emailSentDate)
+      : null;
     
-    const cartConvertedDate = new Date(emailSentDate);
-    const randomDays = Math.floor(Math.random() * 4) + 1; // Random 1-4 days
-    cartConvertedDate.setDate(cartConvertedDate.getDate() + randomDays);
+    const cartConvertedDate = cartData.cartConvertedDate 
+      ? new Date(cartData.cartConvertedDate)
+      : null;
     
     return {
       id: cart.id,
       email: cartData.customerEmail || 'N/A',
       total: cartData.cartTotal ? `$${cartData.cartTotal}` : 'N/A',
       abandonmentDate: abandonmentDate.toLocaleDateString(),
-      emailSent: emailSentDate.toLocaleDateString(),
-      cartConverted: cartConvertedDate.toLocaleDateString(),
+      emailSent: emailSentDate ? emailSentDate.toLocaleDateString() : 'Not sent',
+      cartConverted: cartConvertedDate ? cartConvertedDate.toLocaleDateString() : 'Not converted',
       // Store the original Date objects for sorting
       abandonmentDateObj: abandonmentDate,
+      emailSentDateObj: emailSentDate,
+      cartConvertedDateObj: cartConvertedDate,
       // Store the original cart data for the modal
       originalCart: cart,
     };
   }) || [];
 
   // Sort by abandonment date in descending order (most recent first)
-  cartRows.sort((a, b) => b.abandonmentDateObj - a.abandonmentDateObj);
+  cartRows.sort((a, b) => {
+    // Handle null dates by putting them at the end
+    if (!a.abandonmentDateObj && !b.abandonmentDateObj) return 0;
+    if (!a.abandonmentDateObj) return 1;
+    if (!b.abandonmentDateObj) return -1;
+    return b.abandonmentDateObj.getTime() - a.abandonmentDateObj.getTime();
+  });
 
   const columns = [
     {

@@ -1,97 +1,49 @@
 import React, { useState } from 'react';
 import { useIntl } from 'react-intl';
-import { useApolloClient } from '@apollo/client';
 import Card from '@commercetools-uikit/card';
 import Constraints from '@commercetools-uikit/constraints';
 import Spacings from '@commercetools-uikit/spacings';
 import Text from '@commercetools-uikit/text';
-import TextInput from '@commercetools-uikit/text-input';
-import ToggleInput from '@commercetools-uikit/toggle-input';
 import PrimaryButton from '@commercetools-uikit/primary-button';
 import SecondaryButton from '@commercetools-uikit/secondary-button';
-import { useServiceAdministrationFetcher, useServiceAdministrationUpdater } from '../../hooks/use-service-administration-connector';
-import { processAbandonedCarts } from '../../service';
-import { testCartQuery } from '../../service/test-service';
+import { useServiceLogFetcher } from '../../hooks/use-service-log-connector';
+import { useConfigurationFetcher } from '../../hooks/use-configuration-connector';
+import { processAbandonedCarts, testAbandonedCartService } from '../../services/abandoned-cart-http-service';
 import messages from './messages';
 
 const ServiceAdministration = () => {
   const intl = useIntl();
-  const apolloClient = useApolloClient();
-  const [formData, setFormData] = useState({
-    serviceActivated: false,
-    runEveryHours: '',
-  });
-  const [saveStatus, setSaveStatus] = useState(null); // 'success', 'error', or null
   const [serviceStatus, setServiceStatus] = useState(null); // 'running', 'success', 'error', or null
   const [serviceMessage, setServiceMessage] = useState('');
 
-  // Fetch existing service administration settings
-  const { serviceAdministration: existingSettings, error: configError, loading: configLoading } = useServiceAdministrationFetcher();
-  
-  // Service administration updater
-  const { loading: saveLoading, execute: saveServiceAdministration } = useServiceAdministrationUpdater();
+  // Fetch service log data
+  const { serviceLog, error: serviceLogError, loading: serviceLogLoading, refetch: refetchServiceLog } = useServiceLogFetcher();
 
-  // Load existing settings when they're fetched
-  React.useEffect(() => {
-    if (existingSettings?.value) {
-      // The value is already parsed as an object by Apollo Client
-      const settingsData = existingSettings.value;
-      setFormData({
-        serviceActivated: settingsData.serviceActivated || false,
-        runEveryHours: settingsData.runEveryHours || '',
-      });
+  // Fetch configuration data
+  const { configuration, error: configurationError, loading: configurationLoading, refetch: refetchConfiguration } = useConfigurationFetcher();
+
+  // Parse configuration value if it exists
+  const parsedConfiguration = React.useMemo(() => {
+    if (configuration?.value) {
+      try {
+        return typeof configuration.value === 'string' 
+          ? JSON.parse(configuration.value) 
+          : configuration.value;
+      } catch (error) {
+        console.error('Error parsing configuration value:', error);
+        return null;
+      }
     }
-  }, [existingSettings]);
-
-  const handleInputChange = (field, value) => {
-    setFormData(prev => ({
-      ...prev,
-      [field]: value,
-    }));
-  };
-
-  const handleSave = async () => {
-    try {
-      setSaveStatus(null); // Clear any previous status
-      await saveServiceAdministration(formData);
-      setSaveStatus('success');
-      console.log('Service administration settings saved successfully');
-      
-      // Clear success message after 3 seconds
-      setTimeout(() => setSaveStatus(null), 3000);
-    } catch (error) {
-      setSaveStatus('error');
-      console.error('Error saving service administration settings:', error);
-      
-      // Clear error message after 5 seconds
-      setTimeout(() => setSaveStatus(null), 5000);
-    }
-  };
-
-  const handleCancel = () => {
-    console.log('Cancelling service administration changes');
-    // Reset form to original values
-    if (existingSettings?.value) {
-      const settingsData = existingSettings.value;
-      setFormData({
-        serviceActivated: settingsData.serviceActivated || false,
-        runEveryHours: settingsData.runEveryHours || '',
-      });
-    } else {
-      setFormData({
-        serviceActivated: false,
-        runEveryHours: '',
-      });
-    }
-  };
+    return null;
+  }, [configuration?.value]);
 
   const handleRunNow = async () => {
     try {
       setServiceStatus('running');
-      setServiceMessage('Testing cart query...');
+      setServiceMessage('Testing service connection...');
       
-      // First test the basic cart query
-      const testResult = await testCartQuery(apolloClient);
+      // First test the service connection
+      const testResult = await testAbandonedCartService();
       
       if (!testResult.success) {
         setServiceStatus('error');
@@ -105,14 +57,21 @@ const ServiceAdministration = () => {
         return;
       }
       
-      setServiceMessage('Cart query successful, processing abandoned carts...');
+      setServiceMessage('Service connection successful, processing abandoned carts...');
       
       // If test passes, run the full service
-      const result = await processAbandonedCarts(apolloClient);
+      const result = await processAbandonedCarts();
       
       if (result.success) {
         setServiceStatus('success');
         setServiceMessage(result.message);
+        
+        // Refetch service log data to get updated statistics
+        try {
+          await refetchServiceLog();
+        } catch (refetchError) {
+          console.warn('Failed to refetch service log data:', refetchError);
+        }
         
         // Clear success message after 5 seconds
         setTimeout(() => {
@@ -148,80 +107,69 @@ const ServiceAdministration = () => {
         <Text.Headline as="h1" intlMessage={messages.title} />
         <Text.Body intlMessage={messages.subtitle} />
 
-        {/* Service Configuration */}
-        <Card>
-          <Spacings.Stack scale="l">
-            <Text.Subheadline as="h2" intlMessage={messages.serviceConfigurationTitle} />
-            
-            {/* Service Activated Switch */}
-            <Spacings.Inline scale="s" alignItems="center">
-              <Text.Body as="label" intlMessage={messages.serviceActivatedLabel} />
-              <ToggleInput
-                isChecked={formData.serviceActivated}
-                onChange={(event) => handleInputChange('serviceActivated', event.target.checked)}
-              />
-            </Spacings.Inline>
-
-            {/* Run Every Hours Field */}
-            <Spacings.Inline scale="s" alignItems="center">
-              <Text.Body as="label" intlMessage={messages.runEveryHoursLabel} />
-              <TextInput
-                value={formData.runEveryHours}
-                onChange={(event) => handleInputChange('runEveryHours', event.target.value)}
-                placeholder={intl.formatMessage(messages.runEveryHoursPlaceholder)}
-                type="number"
-                min="1"
-                max="168"
-                horizontalConstraint={3}
-              />
-              <Text.Detail tone="secondary">
-                hours
-              </Text.Detail>
-            </Spacings.Inline>
-
-            {/* Save Status Feedback */}
-            {saveStatus && (
-              <Spacings.Stack scale="s">
-                {saveStatus === 'success' && (
-                  <Text.Detail tone="positive">
-                    {intl.formatMessage(messages.saveSuccess)}
-                  </Text.Detail>
-                )}
-                {saveStatus === 'error' && (
-                  <Text.Detail tone="critical">
-                    {intl.formatMessage(messages.saveError)}
-                  </Text.Detail>
-                )}
-              </Spacings.Stack>
-            )}
-
-            {/* Action Buttons */}
-            <Spacings.Inline scale="m">
-              <PrimaryButton
-                label={intl.formatMessage(messages.saveButton)}
-                onClick={handleSave}
-                isDisabled={saveLoading || configLoading}
-              />
-              <SecondaryButton
-                label={intl.formatMessage(messages.cancelButton)}
-                onClick={handleCancel}
-                isDisabled={saveLoading || configLoading}
-              />
-            </Spacings.Inline>
-          </Spacings.Stack>
-        </Card>
-
         {/* Service Status */}
         <Card>
           <Spacings.Stack scale="m">
             <Text.Subheadline as="h2" intlMessage={messages.statusTitle} />
+            
+            {/* Service URL Display */}
+            <Spacings.Stack scale="s">
+              <Text.Detail tone="secondary">
+                <strong>Service URL:</strong> {window.ENV?.ABANDONED_CART_SERVICE_URL || 'http://localhost:8080'}
+              </Text.Detail>
+            </Spacings.Stack>
+
+            {/* Current Configuration Display */}
+            {configurationLoading && (
+              <Text.Detail tone="secondary">
+                Loading configuration...
+              </Text.Detail>
+            )}
+            {configurationError && (
+              <Text.Detail tone="critical">
+                Error loading configuration: {configurationError.message}
+              </Text.Detail>
+            )}
+            {parsedConfiguration && (
+              <Spacings.Stack scale="s">
+                <Spacings.Inline scale="m" alignItems="center">
+                  <Text.Detail tone="secondary">
+                    <strong>Current Configuration:</strong>
+                  </Text.Detail>
+                  <SecondaryButton
+                    label="Refresh"
+                    onClick={refetchConfiguration}
+                    isDisabled={configurationLoading}
+                    size="small"
+                  />
+                </Spacings.Inline>
+                <Spacings.Inline scale="m">
+                  <Text.Detail tone="secondary">
+                    • Abandon after: {parsedConfiguration.abandonAfterHours || 'N/A'} hours
+                  </Text.Detail>
+                  <Text.Detail tone="secondary">
+                    • Ignore carts older than: {parsedConfiguration.ignoreCartsOlderThanDays || 'N/A'} days
+                  </Text.Detail>
+                </Spacings.Inline>
+                {parsedConfiguration.emailSubject && (
+                  <Text.Detail tone="secondary">
+                    • Email Subject: {parsedConfiguration.emailSubject}
+                  </Text.Detail>
+                )}
+                {parsedConfiguration.emailTemplate && (
+                  <Text.Detail tone="secondary">
+                    • Email Template: {parsedConfiguration.emailTemplate.substring(0, 100)}...
+                  </Text.Detail>
+                )}
+              </Spacings.Stack>
+            )}
+            {!configurationLoading && !configurationError && !parsedConfiguration && (
+              <Text.Detail tone="secondary">
+                No configuration found. Please configure the abandoned cart settings.
+              </Text.Detail>
+            )}
+            
             <Spacings.Inline scale="l" alignItems="center">
-              <Text.Detail tone="secondary">
-                {intl.formatMessage(messages.lastRunLabel)} {new Date(Date.now() - 2 * 60 * 60 * 1000).toLocaleString()}
-              </Text.Detail>
-              <Text.Detail tone="secondary">
-                {intl.formatMessage(messages.cartsProcessedLabel)} 23 carts
-              </Text.Detail>
               <PrimaryButton
                 label={intl.formatMessage(messages.runNowButton)}
                 onClick={handleRunNow}
@@ -249,6 +197,32 @@ const ServiceAdministration = () => {
                 )}
               </Spacings.Stack>
             )}
+
+            {/* Detailed Service Results */}
+            {serviceLog?.value && (
+              <Spacings.Stack scale="s">
+                <Text.Detail tone="secondary">
+                  <strong>Last Run:</strong> {new Date(serviceLog.value.lastRunTime).toLocaleString()}
+                </Text.Detail>
+                <Spacings.Inline scale="m">
+                  <Text.Detail tone="secondary">
+                    • Carts Fetched: {serviceLog.value.cartsFetched || 0}
+                  </Text.Detail>
+                  <Text.Detail tone="secondary">
+                    • Abandoned Carts: {serviceLog.value.abandonedCartObjectsCreated || 0}
+                  </Text.Detail>
+                  <Text.Detail tone="secondary">
+                    • Processing Duration: {serviceLog.value.processingDuration ? `${Math.round(serviceLog.value.processingDuration / 1000)}s` : 'N/A'}
+                  </Text.Detail>
+                </Spacings.Inline>
+                {serviceLog.value.status === 'error' && (
+                  <Text.Detail tone="critical">
+                    Last run failed: {serviceLog.value.error}
+                  </Text.Detail>
+                )}
+              </Spacings.Stack>
+            )}
+
           </Spacings.Stack>
         </Card>
       </Spacings.Stack>

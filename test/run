@@ -1,0 +1,92 @@
+#!/bin/bash
+
+# Test Scripts Menu
+# Easy way to run test scripts without typing commands
+# Loops until user chooses to exit
+
+while true; do
+    echo ""
+    echo "🧪 Abandoned Carts Test Scripts"
+    echo "================================"
+    echo ""
+           echo "Choose an option:"
+           echo "1) 📡 Poll abandoned cart Pub/Sub messages"
+           echo "2) 📦 Poll order created Pub/Sub messages"
+           echo "3) 🔄 Resend order created events from file"
+           echo "4) ➕ Create custom object"
+           echo "5) 🗑️  Delete custom object"
+           echo "6) 🗑️  Delete ALL custom objects"
+           echo "7) 📋 List abandoned cart custom objects"
+           echo "8) 🛒 Create order from cart"
+           echo "9) 🔄 Unset abandoned field from carts"
+           echo "10) 🔨 Build TypeScript"
+           echo "11) 🔍 Lint code"
+           echo "12) ✨ Format code (Prettier)"
+           echo "13) ❌ Exit"
+    echo ""
+
+    read -p "Enter your choice (1-13): " choice
+
+    case $choice in
+        1)
+            echo "📡 Starting abandoned cart Pub/Sub polling..."
+            yarn poll-abandoned-cart
+            ;;
+        2)
+            echo "📦 Starting order created Pub/Sub polling..."
+            yarn poll-order-created
+            ;;
+        3)
+            echo "🔄 Resending order created events from file..."
+            yarn resend-order-created
+            ;;
+        4)
+            echo "➕ Creating custom object..."
+            yarn create-obj
+            ;;
+        5)
+            echo "🗑️  Deleting custom object..."
+            yarn delete
+            ;;
+        6)
+            echo "🗑️  Deleting ALL custom objects..."
+            yarn delete-all
+            ;;
+        7)
+            echo "📋 Listing abandoned cart custom objects..."
+            yarn list-obj
+            ;;
+        8)
+            echo "🛒 Creating order from cart..."
+            yarn create-order
+            ;;
+        9)
+            echo "🔄 Unsetting abandoned field from carts..."
+            yarn unset-abandoned
+            ;;
+        10)
+            echo "🔨 Building TypeScript..."
+            yarn build
+            ;;
+        11)
+            echo "🔍 Running linter..."
+            yarn lint
+            ;;
+        12)
+            echo "✨ Formatting code..."
+            yarn prettier
+            ;;
+        13)
+            echo "👋 Goodbye!"
+            exit 0
+            ;;
+        *)
+            echo "❌ Invalid choice. Please choose 1-13."
+            continue
+            ;;
+    esac
+
+    echo ""
+    echo "✅ Script completed!"
+    echo ""
+done

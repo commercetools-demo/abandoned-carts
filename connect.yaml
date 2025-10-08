@@ -8,13 +8,14 @@ deployAs:
           required: true
         - key: CLOUD_IDENTIFIER
           description: The cloud identifier.
-          default: 'gcp-us'
+          default: gcp-us
         - key: ENTRY_POINT_URI_PATH
           description: The entry point URI path.
           required: true
         - key: APPLICATION_URL
           description: The application URL.
-          default: 'https://your_app_hostname.com'
+          default: https://your_app_hostname.com
+      securedConfiguration: []
   - name: service
     applicationType: service
     endpoint: /service
@@ -22,18 +23,47 @@ deployAs:
       standardConfiguration:
         - key: CTP_REGION
           description: commercetools Composable Commerce API region
+          default: us-central1.gcp
           required: true
-          default: "us-central1.gcp"
+  - name: job
+    applicationType: job
+    endpoint: /job
+    properties:
+      schedule: "*/5 * * * *"
+    configuration:
+      standardConfiguration:
+        - key: ABANDONED_CART_SERVICE_URL
+          description: The abandoned cart service URL to call
+          default: http://localhost:8080
+          required: true
+  - name: order-created-event
+    applicationType: event
+    endpoint: /order-created-event
+  - name: mail-sender
+    applicationType: event
+    endpoint: /mailSender
+    scripts:
+      postDeploy: npm install && npm run connector:post-deploy
+      preUndeploy: npm install && npm run connector:pre-undeploy
+    configuration:
+      standardConfiguration:
+        - key: CTP_REGION
+          description: commercetools Composable Commerce API region
+        - key: SENDER_EMAIL_ADDRESS
+          description: sender's email address displayed in the email
       securedConfiguration:
-        - key: CTP_PROJECT_KEY
-          description: commercetools Composable Commerce project key
-          required: true
-        - key: CTP_CLIENT_ID
-          description: commercetools Composable Commerce client ID
-          required: true
-        - key: CTP_CLIENT_SECRET
-          description: commercetools Composable Commerce client secret
-          required: true
-        - key: CTP_SCOPE
-          description: commercetools Composable Commerce client scope
-          required: true
+        - key: EMAIL_PROVIDER_API_KEY
+          description: The API key used to communicate with email provider
+inheritAs:
+  apiClient:
+    scopes:
+      - manage_key_value_documents
+      - manage_carts
+      - view_orders
+      - manage_subscriptions # only for event application types that use Subscriptions
+  configuration:
+    standardConfiguration:
+      - key: ABANDONED_CART_SERVICE_URL
+        description: Service URL
+        default: http://localhost:8080
+        required: true

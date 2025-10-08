@@ -3,6 +3,7 @@ dotenv.config();
 
 import express, { Express } from 'express';
 import bodyParser from 'body-parser';
+import cors from 'cors';
 
 // Import routes
 import ServiceRoutes from './routes/service.route';
@@ -19,7 +20,21 @@ readConfiguration();
 const app: Express = express();
 app.disable('x-powered-by');
 
+// CORS configuration
+const corsOptions = {
+  origin: [
+    'http://localhost:3001', // mc-app development server
+    'https://mc.europe-west1.gcp.commercetools.com', // commercetools MC
+    'https://mc.us-central1.gcp.commercetools.com', // commercetools MC
+    'https://mc.ap-southeast1.gcp.commercetools.com', // commercetools MC
+  ],
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+};
+
 // Define configurations
+app.use(cors(corsOptions));
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 
