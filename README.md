@@ -1,216 +1,152 @@
 # Abandoned Carts Application
 
-A CommerceTools Custom Application for managing abandoned carts with a standalone service for processing abandoned cart data.
+A comprehensive commercetools solution for managing abandoned carts with automated processing, email notifications, and order conversion tracking.
 
-## Project Structure
+## Architecture Overview
+
+The application consists of several interconnected modules that work together to provide a complete abandoned cart management solution:
+
+### Core Modules
+
+#### 1. **Merchant Center Application (mc-app)**
+A custom application that provides the user interface for managing abandoned carts within the commercetools Merchant Center.
+
+**Key Features:**
+- View abandoned carts with real-time data from custom objects
+- Configure abandonment rules and email templates
+- Monitor service execution and processing statistics
+- Manage service settings and run manual processing
+
+**Interactions:**
+- Reads configuration from commercetools custom objects
+- Calls the abandoned cart service via HTTP API
+- Displays processing results and service logs
+
+#### 2. **Abandoned Cart Service (service)**
+A Node.js/TypeScript microservice that processes abandoned carts and creates custom objects.
+
+**Key Features:**
+- Fetches active carts based on configurable timeframes
+- Creates abandoned cart custom objects with customer data
+- Updates cart custom fields to mark them as abandoned
+- Provides comprehensive logging and error handling
+
+**Interactions:**
+- Reads configuration from commercetools custom objects
+- Queries carts using commercetools SDK
+- Creates and updates custom objects
+- Logs processing statistics to service-log custom object
+
+#### 3. **Mail Sender Service (mail-sender)**
+A microservice that handles email notifications for abandoned carts.
+
+**Key Features:**
+- Processes Pub/Sub messages for new abandoned cart custom objects
+- Fetches customer and cart details from commercetools
+- Sends personalized emails using SendGrid
+- Updates custom objects with email sent timestamps
+
+**Interactions:**
+- Receives messages directly from Google Cloud Pub/Sub
+- Queries commercetools for customer and cart data
+- Sends emails via SendGrid API
+- Updates custom objects with email status
+
+#### 4. **Order Created Event Handler (order-created-event)**
+A microservice that processes order creation events and updates abandoned cart records.
+
+**Key Features:**
+- Receives order created messages via Pub/Sub
+- Updates abandoned cart custom objects with conversion timestamps
+- Tracks cart-to-order conversion rates
+
+**Interactions:**
+- Receives messages directly from Google Cloud Pub/Sub
+- Queries commercetools for abandoned cart custom objects
+- Updates custom objects with conversion data
+
+#### 5. **Job Scheduler (job)**
+A scheduled job that triggers the abandoned cart service at regular intervals.
+
+**Key Features:**
+- Runs on a configurable schedule (default: every 5 minutes)
+- Calls the abandoned cart service via HTTP
+- Provides centralized job management
+
+**Interactions:**
+- Calls abandoned cart service endpoint
+- Logs job execution results
+
+### Data Flow
 
 ```
-abandoned-carts/
-├── mc-app/                    # Merchant Center Custom Application
-│   ├── src/
-│   │   ├── components/        # React components
-│   │   │   ├── carts/         # Carts management
-│   │   │   ├── configuration/ # App configuration
-│   │   │   └── service-administration/ # Service admin
-│   │   ├── hooks/             # Custom React hooks
-│   │   ├── service/           # Service integration
-│   │   └── i18n/              # Internationalization
-│   └── public/                # Built application files
-└── service/                   # Standalone Node.js/TypeScript service
-    ├── src/
-    │   ├── controllers/       # HTTP controllers
-    │   ├── services/          # Business logic
-    │   ├── routes/            # API routes
-    │   ├── client/            # CommerceTools SDK client
-    │   └── tests/             # Unit tests
-    └── build/                 # Compiled TypeScript
+1. Configuration Setup
+   └── MC App → commercetools Custom Object (abandoned-cart/configuration)
+
+2. Cart Processing
+   └── Job Scheduler → Abandoned Cart Service → commercetools API
+   └── Service → Custom Objects (abandoned-carts/{cartId})
+   └── Service → Cart Custom Fields (abandoned: true)
+
+3. Email Notification
+   └── Pub/Sub → Mail Sender Service
+   └── Mail Sender → commercetools API → SendGrid → Customer
+
+4. Order Conversion
+   └── Pub/Sub → Order Event Handler
+   └── Order Event Handler → commercetools API → Custom Object Update
+
+5. Monitoring
+   └── MC App → Service Log Custom Object → Processing Statistics
 ```
 
-## Features
+### Key Data Structures
 
-### Merchant Center Application
-- **Carts Management**: View and manage abandoned carts
-- **Configuration**: Configure abandoned cart settings
-- **Service Administration**: Manage the abandoned cart service
-- **Multi-language Support**: Internationalization for multiple languages
-
-### Standalone Service
-- **Abandoned Cart Processing**: Automated processing of abandoned carts
-- **Custom Object Creation**: Creates custom objects for abandoned carts
-- **Configurable Rules**: Configurable abandonment timeframes
-- **RESTful API**: HTTP endpoints for cart processing
-- **Comprehensive Logging**: Detailed logging for monitoring
-
-## Prerequisites
-
-- Node.js (v16 or higher)
-- npm or yarn
-- CommerceTools project with appropriate permissions
-- Environment variables configured
-
-## Environment Variables
-
-Create a `.env` file in the `service/` directory with the following variables:
-
-```env
-CTP_CLIENT_ID=your_client_id
-CTP_CLIENT_SECRET=your_client_secret
-CTP_PROJECT_KEY=your_project_key
-CTP_SCOPE=your_scope
-CTP_REGION=your_region
-```
-
-## Installation
-
-### Merchant Center Application
-
-```bash
-cd mc-app
-npm install
-```
-
-### Standalone Service
-
-```bash
-cd service
-npm install
-```
-
-## Development
-
-### Running the MC App
-
-```bash
-cd mc-app
-npm start
-```
-
-The application will be available at the configured Merchant Center URL.
-
-### Running the Service
-
-```bash
-cd service
-npm run start:dev
-```
-
-The service will be available at `http://localhost:3000`
-
-## API Endpoints
-
-### Abandoned Cart Service
-
-#### Process Abandoned Carts
-- **POST** `/abandoned-cart/process`
-- **Description**: Processes abandoned carts and creates custom objects
-- **Response**: JSON with processing results
-
-Example response:
-```json
-{
-  "success": true,
-  "totalProcessed": 150,
-  "totalCreated": 45,
-  "configuration": {
-    "abandonAfterHours": 24,
-    "ignoreCartsOlderThanDays": 30
-  },
-  "message": "Successfully processed 150 carts and created 45 abandoned cart records..."
-}
-```
-
-## Configuration
-
-The abandoned cart service reads configuration from a CommerceTools custom object:
-
+#### Configuration Custom Object
 - **Container**: `abandoned-cart`
 - **Key**: `configuration`
-- **Value**: JSON object with:
-  - `abandonAfterHours`: Hours after which a cart is considered abandoned (default: 24)
-  - `ignoreCartsOlderThan`: Days after which carts are ignored (default: 30)
+- **Purpose**: Stores abandonment rules and email templates
 
-Example configuration:
-```json
-{
-  "abandonAfterHours": "24",
-  "ignoreCartsOlderThan": "30"
-}
-```
-
-## Custom Object Structure
-
-For each abandoned cart, a custom object is created with:
+#### Abandoned Cart Custom Objects
 - **Container**: `abandoned-carts`
 - **Key**: Cart ID
-- **Value**: JSON object containing:
-  - `customerEmail`: Customer's email address
-  - `cartTotal`: Cart total amount
-  - `cartId`: Cart ID
-  - `abandonmentDate`: Date when cart was last modified
-  - `currencyCode`: Currency code
+- **Purpose**: Stores abandoned cart data and tracking information
 
-## Testing
+#### Service Log Custom Object
+- **Container**: `abandoned-cart`
+- **Key**: `service-log`
+- **Purpose**: Tracks processing statistics and execution history
 
-### MC App Tests
-```bash
-cd mc-app
-npm test
-```
+### Integration Points
 
-### Service Tests
-```bash
-cd service
-npm test
-```
+#### Google Cloud Pub/Sub
+- **Topics**: Auto-generated topic names for abandoned cart notifications and order creation events
+- **Purpose**: Direct event-driven communication to microservices
+- **Note**: Topic names shown in testing scripts are for development/testing purposes only
 
-## Building for Production
+#### commercetools API
+- **Custom Objects**: Configuration, abandoned carts, service logs
+- **Carts API**: Querying and updating cart data
+- **Custom Fields**: Marking carts as abandoned
 
-### MC App
-```bash
-cd mc-app
-npm run build
-```
+#### SendGrid API
+- **Purpose**: Sending transactional emails
+- **Integration**: SMTP-based email delivery
 
-### Service
-```bash
-cd service
-npm run build
-```
+### Scalability & Reliability
 
-## Deployment
+- **Microservices Architecture**: Each service can be scaled independently
+- **Event-Driven Design**: Direct Pub/Sub messaging for real-time processing
+- **Error Handling**: Comprehensive error handling and logging
+- **Configuration Management**: Centralized configuration via custom objects
+- **Monitoring**: Built-in service logging and statistics
 
-### Merchant Center Application
-Deploy the built application to your CommerceTools project using the Merchant Center Custom Applications feature.
+### Development & Testing
 
-### Standalone Service
-Deploy the service to your preferred hosting platform (e.g., Google Cloud Platform, AWS, Heroku).
+The project includes comprehensive testing infrastructure:
+- **Test Scripts**: Custom object management, order creation, and service testing
+- **Mock Services**: Local development and testing capabilities
+- **Interactive Tools**: Scripts for managing test data and scenarios
+- **Pub/Sub Testing**: Tools for testing event-driven workflows with predefined topic names
 
-## Usage
-
-1. **Configure the Service**: Set up the configuration custom object in CommerceTools
-2. **Deploy the MC App**: Deploy the custom application to your Merchant Center
-3. **Process Carts**: Use the service endpoint to process abandoned carts
-4. **Monitor Results**: View processing results in the MC App or service logs
-
-## Development Notes
-
-- The service uses the CommerceTools SDK for API interactions
-- All API calls are properly logged for debugging
-- The service handles errors gracefully and continues processing
-- Configuration is cached and can be updated without service restart
-
-## Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Add tests for new functionality
-5. Submit a pull request
-
-## License
-
-This project is licensed under the MIT License.
-
-## Support
-
-For issues and questions, please create an issue in the repository or contact the development team.
+This architecture provides a robust, scalable solution for abandoned cart management with real-time processing, email notifications, and conversion tracking.
