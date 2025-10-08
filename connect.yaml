@@ -52,9 +52,9 @@ inheritAs:
   apiClient:
     scopes:
       - manage_key_value_documents
-      - manage_carts
-      - view_orders
-      - manage_subscriptions # only for event application types that use Subscriptions
+      - manage_orders
+      - view_customers
+      - manage_subscriptions
   configuration:
     standardConfiguration:
       - key: ABANDONED_CART_SERVICE_URL
