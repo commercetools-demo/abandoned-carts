@@ -30,12 +30,6 @@ deployAs:
     endpoint: /job
     properties:
       schedule: "*/5 * * * *"
-    configuration:
-      standardConfiguration:
-        - key: ABANDONED_CART_SERVICE_URL
-          description: The abandoned cart service URL to call
-          default: http://localhost:8080
-          required: true
   - name: order-created-event
     applicationType: event
     endpoint: /order-created-event
