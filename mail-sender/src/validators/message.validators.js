@@ -1,8 +1,6 @@
 import CustomError from '../errors/custom.error.js';
-import { decodeToJson } from '../utils/decoder.utils.js';
 import {
   HTTP_STATUS_BAD_REQUEST,
-  HTTP_STATUS_SUCCESS_ACCEPTED,
 } from '../constants/http-status.constants.js';
 import readConfiguration from '../utils/config.utils.js';
 
@@ -27,5 +25,4 @@ export function doValidation(request) {
       'Bad request: No Pub/Sub message was received'
     );
   }
-  console.log('request', request);
 }

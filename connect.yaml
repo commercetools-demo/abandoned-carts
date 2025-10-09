@@ -60,4 +60,3 @@ inheritAs:
       - key: ABANDONED_CART_SERVICE_URL
         description: Service URL
         default: http://localhost:8080
-        required: true

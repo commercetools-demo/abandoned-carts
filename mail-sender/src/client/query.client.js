@@ -23,6 +23,17 @@ export async function getCartById(cartId) {
     .then((response) => response.body);
 }
 
+export async function getCustomerById(customerId) {
+  return await createApiRoot()
+    .customers()
+    .withId({
+      ID: customerId,
+    })
+    .get()
+    .execute()
+    .then((response) => response.body);
+}
+
 export async function updateCustomObject(container, key, version, value) {
   return await createApiRoot()
     .customObjects()
