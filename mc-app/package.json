@@ -5,7 +5,7 @@
   "private": true,
   "scripts": {
     "build": "mc-scripts build",
-    "start": "mc-scripts start",
+    "start": "mc-scripts compile-html && serve ./public -p 8080 --config ../serve.json",
     "compile-html": "mc-scripts compile-html",
     "compile-html:local": "MC_APP_ENV=development mc-scripts compile-html --transformer @commercetools-frontend/mc-dev-authentication/transformer-local.js",
     "start:prod:local": "npm run compile-html:local && mc-scripts serve",
@@ -15,7 +15,8 @@
     "lint": "eslint src custom-application-config.mjs",
     "format": "prettier --write '**/*.js'",
     "typecheck": "tsc --noEmit",
-    "verify": "yarn install --frozen-lockfile && yarn audit --level high --groups dependencies && yarn lint && yarn test && yarn build"
+    "verify": "yarn install --frozen-lockfile && yarn audit --level high --groups dependencies && yarn lint && yarn test && yarn build",
+    "start:dev": "mc-scripts start"
   },
   "dependencies": {
     "@apollo/client": "3.12.4",
@@ -28,6 +29,7 @@
     "@commercetools-frontend/constants": "^27.7.0",
     "@commercetools-frontend/i18n": "^27.7.0",
     "@commercetools-frontend/l10n": "^27.7.0",
+    "@commercetools-frontend/mc-scripts": "^27.7.0",
     "@commercetools-frontend/permissions": "^27.7.0",
     "@commercetools-uikit/card": "^20.4.0",
     "@commercetools-uikit/constraints": "^20.4.0",
@@ -61,7 +63,8 @@
     "react-intl": "^7.1.4",
     "react-redux": "9.2.0",
     "react-router-dom": "5.3.4",
-    "redux": "5.0.1"
+    "redux": "5.0.1",
+    "serve": "^14.2.6"
   },
   "resolutions": {
     "@emotion/react": "^11.14.0",
@@ -76,7 +79,6 @@
     "@commercetools-frontend/eslint-config-mc-app": "^27.7.0",
     "@commercetools-frontend/jest-preset-mc-app": "^27.7.0",
     "@commercetools-frontend/mc-dev-authentication": "^27.7.0",
-    "@commercetools-frontend/mc-scripts": "^27.7.0",
     "@formatjs/cli": "6.2.12",
     "@testing-library/dom": "^10.4.0",
     "@testing-library/jest-dom": "^6.6.3",
