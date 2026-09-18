@@ -20,12 +20,7 @@ const ServiceAdministration = () => {
   const [serviceMessage, setServiceMessage] = useState('');
 
   // Fetch service log data
-  const {
-    serviceLog,
-    error: serviceLogError,
-    loading: serviceLogLoading,
-    refetch: refetchServiceLog,
-  } = useServiceLogFetcher();
+  const { serviceLog, refetch: refetchServiceLog } = useServiceLogFetcher();
 
   // Fetch configuration data
   const {

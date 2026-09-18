@@ -1,11 +1,10 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { useIntl } from 'react-intl';
 import Constraints from '@commercetools-uikit/constraints';
 import Spacings from '@commercetools-uikit/spacings';
 import Text from '@commercetools-uikit/text';
 import DataTable from '@commercetools-uikit/data-table';
 import PrimaryButton from '@commercetools-uikit/primary-button';
-import SecondaryButton from '@commercetools-uikit/secondary-button';
 import { useCartsFetcher } from '../../hooks/use-carts-connector';
 import messages from './messages';
 
