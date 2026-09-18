@@ -5,10 +5,17 @@ import {
 } from '@commercetools/platform-sdk';
 import { ByProjectKeyRequestBuilder } from '@commercetools/platform-sdk/dist/declarations/src/generated/client/by-project-key-request-builder';
 
-const CUSTOMER_CREATE_SUBSCRIPTION_KEY =
-  'myconnector-customerCreateSubscription';
+/**
+ * The Subscription that tells this application an order was placed.
+ *
+ * OrderCreated is the whole point: it is what turns a recorded abandoned
+ * cart into a conversion. The key is namespaced to this connector so it
+ * cannot collide with a Project's own order Subscriptions, which commonly
+ * exist alongside it.
+ */
+const ORDER_CREATED_SUBSCRIPTION_KEY = 'abandoned-cart-order-created-subscription';
 
-export async function createGcpPubSubCustomerCreateSubscription(
+export async function createGcpPubSubOrderCreatedSubscription(
   apiRoot: ByProjectKeyRequestBuilder,
   topicName: string,
   projectId: string
@@ -21,7 +28,7 @@ export async function createGcpPubSubCustomerCreateSubscription(
   await createSubscription(apiRoot, destination);
 }
 
-export async function createAzureServiceBusCustomerCreateSubscription(
+export async function createAzureServiceBusOrderCreatedSubscription(
   apiRoot: ByProjectKeyRequestBuilder,
   connectionString: string
 ): Promise<void> {
@@ -36,17 +43,17 @@ async function createSubscription(
   apiRoot: ByProjectKeyRequestBuilder,
   destination: Destination
 ) {
-  await deleteCustomerCreateSubscription(apiRoot);
+  await deleteOrderCreatedSubscription(apiRoot);
   await apiRoot
     .subscriptions()
     .post({
       body: {
-        key: CUSTOMER_CREATE_SUBSCRIPTION_KEY,
+        key: ORDER_CREATED_SUBSCRIPTION_KEY,
         destination,
         messages: [
           {
-            resourceTypeId: 'customer',
-            types: ['CustomerCreated'],
+            resourceTypeId: 'order',
+            types: ['OrderCreated'],
           },
         ],
       },
@@ -54,7 +61,7 @@ async function createSubscription(
     .execute();
 }
 
-export async function deleteCustomerCreateSubscription(
+export async function deleteOrderCreatedSubscription(
   apiRoot: ByProjectKeyRequestBuilder
 ): Promise<void> {
   const {
@@ -63,7 +70,7 @@ export async function deleteCustomerCreateSubscription(
     .subscriptions()
     .get({
       queryArgs: {
-        where: `key = "${CUSTOMER_CREATE_SUBSCRIPTION_KEY}"`,
+        where: `key = "${ORDER_CREATED_SUBSCRIPTION_KEY}"`,
       },
     })
     .execute();
@@ -73,7 +80,7 @@ export async function deleteCustomerCreateSubscription(
 
     await apiRoot
       .subscriptions()
-      .withKey({ key: CUSTOMER_CREATE_SUBSCRIPTION_KEY })
+      .withKey({ key: ORDER_CREATED_SUBSCRIPTION_KEY })
       .delete({
         queryArgs: {
           version: subscription.version,

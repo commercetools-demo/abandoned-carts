@@ -34,13 +34,16 @@ export async function getCustomerById(customerId) {
     .then((response) => response.body);
 }
 
+/**
+ * Custom Objects are written through the collection, not through
+ * `withContainerAndKey` — that builder only reads and deletes. Posting to it
+ * throws before a request is ever made, which is invisible from the outside:
+ * the email goes out and nothing records that it did, so the next delivery
+ * of the same message sends it again.
+ */
 export async function updateCustomObject(container, key, version, value) {
   return await createApiRoot()
     .customObjects()
-    .withContainerAndKey({
-      container: container,
-      key: key,
-    })
     .post({
       body: {
         container: container,

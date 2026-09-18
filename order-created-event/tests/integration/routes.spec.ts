@@ -1,57 +1,58 @@
 import { expect } from '@jest/globals';
 import request from 'supertest';
 import app from '../../src/app';
-import * as enventController from '../../src/controllers/event.controller';
-import { readConfiguration } from '../../src/utils/config.utils';
 
 jest.mock('../../src/utils/config.utils');
-describe('Testing router', () => {
-  beforeEach(() => {
-    (readConfiguration as jest.Mock).mockClear();
-  });
-  test('Post to non existing route', async () => {
-    const response = await request(app).post('/none');
-    expect(response.status).toBe(404);
-    expect(response.body).toEqual({
-      message: 'Path not found.',
-    });
-  });
-  test('Post invalid body', async () => {
-    const response = await request(app).post('/event').send({
-      message: 'hello world',
-    });
-    expect(response.status).toBe(400);
-    expect(response.body).toEqual({
-      message: 'Bad request: No customer id in the Pub/Sub message',
-    });
-  });
-  test('Post empty body', async () => {
-    const response = await request(app).post('/event');
-    expect(response.status).toBe(400);
-    expect(response.body).toEqual({
-      message: 'Bad request: Wrong No Pub/Sub message format',
-    });
-  });
+jest.mock('../../src/client/create.client');
+
+const envelope = (message: unknown) => ({
+  message: {
+    data: Buffer.from(JSON.stringify(message)).toString('base64'),
+  },
 });
-describe('unexpected error', () => {
-  let postMock: jest.SpyInstance;
 
-  beforeEach(() => {
-    // Mock the post method to throw an error
-    postMock = jest.spyOn(enventController, 'post').mockImplementation(() => {
-      throw new Error('Test error');
-    });
-    (readConfiguration as jest.Mock).mockClear();
+describe('the order-created event application', () => {
+  // The route has to be mounted where Connect delivers — {url}/{endpoint},
+  // with `endpoint` taken from connect.yaml. Mounted anywhere else, every
+  // message from the Subscription gets a 404 and is retried for a week.
+  test('answers on the path connect.yaml declares', async () => {
+    const response = await request(app)
+      .post('/order-created-event')
+      .send(envelope({ type: 'OrderCreated' }));
+    expect(response.status).toBe(204);
   });
 
-  afterEach(() => {
-    // Restore the original implementation
-    postMock.mockRestore();
-  });
-  test('should handle errors thrown by post method', async () => {
-    // Call the route handler
+  test('404s on anything else', async () => {
     const response = await request(app).post('/event');
-    expect(response.status).toBe(500);
-    expect(response.body).toEqual({ message: 'Internal server error' });
+    expect(response.status).toBe(404);
+    expect(response.body).toEqual({ message: 'Path not found.' });
+  });
+
+  // Everything acknowledges. The queue retries any non-2xx for seven days,
+  // and none of these will ever succeed on a retry.
+  test('acknowledges an envelope with no data', async () => {
+    const response = await request(app).post('/order-created-event').send({ message: {} });
+    expect(response.status).toBe(204);
+  });
+
+  test('acknowledges unparseable data', async () => {
+    const response = await request(app)
+      .post('/order-created-event')
+      .send({ message: { data: 'bm90IGpzb24=' } });
+    expect(response.status).toBe(204);
+  });
+
+  test('acknowledges a message of another type', async () => {
+    const response = await request(app)
+      .post('/order-created-event')
+      .send(envelope({ type: 'CustomerCreated', customer: { id: 'c-1' } }));
+    expect(response.status).toBe(204);
+  });
+
+  test('acknowledges an order with no cart behind it', async () => {
+    const response = await request(app)
+      .post('/order-created-event')
+      .send(envelope({ type: 'OrderCreated', order: { id: 'o-1' } }));
+    expect(response.status).toBe(204);
   });
 });

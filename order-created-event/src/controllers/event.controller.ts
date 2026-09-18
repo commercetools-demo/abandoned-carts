@@ -1,114 +1,86 @@
 import { Request, Response } from 'express';
 import { createApiRoot } from '../client/create.client';
-import CustomError from '../errors/custom.error';
 import { logger } from '../utils/logger.utils';
 
+const ABANDONED_CARTS_CONTAINER = 'abandoned-carts';
+
 /**
- * Exposed event POST endpoint.
- * Receives the Pub/Sub message and updates abandoned cart custom object
+ * Marks a recorded abandoned cart as converted when its order is placed.
  *
- * @param {Request} request The express request
- * @param {Response} response The express response
- * @returns
+ * Every path acknowledges. The message queue retries anything that is not a
+ * 2xx, so answering an error to a message this application simply has no use
+ * for — a different message type, an order with no cart, a cart nobody
+ * recorded — would put that message into a redelivery loop that lasts a week
+ * and never succeeds. Nothing here is worth a retry: the order exists either
+ * way, and the conversion timestamp is a record, not a transaction.
  */
 export const post = async (request: Request, response: Response) => {
-  // Check request body
-  if (!request.body) {
-    logger.error('Missing request body.');
-    throw new CustomError(400, 'Bad request: No Pub/Sub message was received');
+  const ack = () => response.status(204).send();
+
+  const data = request.body?.message?.data;
+  if (!data) {
+    logger.warn('No Pub/Sub message data on the request, acknowledging.');
+    return ack();
   }
 
-  // Check if the body comes in a message
-  if (!request.body.message) {
-    logger.error('Missing body message');
-    throw new CustomError(400, 'Bad request: Wrong Pub/Sub message format');
-  }
-
-  // Receive the Pub/Sub message
-  const pubSubMessage = request.body.message;
-
-  // Decode the message data
-  const decodedData = pubSubMessage.data
-    ? Buffer.from(pubSubMessage.data, 'base64').toString().trim()
-    : undefined;
-
-  if (!decodedData) {
-    throw new CustomError(400, 'Bad request: No data in Pub/Sub message');
-  }
-
-  let orderCreatedMessage;
+  let message: Record<string, unknown>;
   try {
-    orderCreatedMessage = JSON.parse(decodedData);
+    message = JSON.parse(Buffer.from(data, 'base64').toString().trim());
   } catch (error) {
-    logger.error('Failed to parse Pub/Sub message data:', error);
-    throw new CustomError(400, 'Bad request: Invalid JSON in Pub/Sub message');
+    logger.error(
+      `Could not parse the Pub/Sub message, acknowledging: ${
+        error instanceof Error ? error.message : 'unknown error'
+      }`
+    );
+    return ack();
   }
 
-  // Validate message format
-  if (orderCreatedMessage.notificationType !== 'Message' || 
-      orderCreatedMessage.type !== 'OrderCreated' ||
-      !orderCreatedMessage.order) {
-    logger.info('Message is not an OrderCreated message, skipping:', {
-      notificationType: orderCreatedMessage.notificationType,
-      type: orderCreatedMessage.type
-    });
-    response.status(204).send();
-    return;
+  const order = message.order as { id?: string; cart?: { id?: string }; createdAt?: string } | undefined;
+  if (message.type !== 'OrderCreated' || !order) {
+    logger.info(`Ignoring a ${String(message.type)} message.`);
+    return ack();
   }
 
-  const order = orderCreatedMessage.order;
   const cartId = order.cart?.id;
-
   if (!cartId) {
-    logger.warn('Order has no cart ID, skipping abandoned cart update:', order.id);
-    response.status(204).send();
-    return;
+    logger.info(`Order ${order.id} has no cart reference, nothing to mark.`);
+    return ack();
   }
-
-  logger.info(`Processing OrderCreated event for order ${order.id} from cart ${cartId}`);
 
   try {
-    // Look for abandoned cart custom object with the cart ID as key
-    const customObjectResponse = await createApiRoot()
+    const { body: customObject } = await createApiRoot()
       .customObjects()
-      .withContainerAndKey({
-        container: 'abandoned-carts',
-        key: cartId,
-      })
+      .withContainerAndKey({ container: ABANDONED_CARTS_CONTAINER, key: cartId })
       .get()
       .execute();
-
-    const customObject = customObjectResponse.body;
-    
-    // Update the custom object with conversion timestamp
-    const updatedValue = {
-      ...customObject.value,
-      cartConvertedDate: order.createdAt,
-    };
 
     await createApiRoot()
       .customObjects()
       .post({
         body: {
-          container: 'abandoned-carts',
+          container: ABANDONED_CARTS_CONTAINER,
           key: cartId,
           version: customObject.version,
-          value: updatedValue,
+          value: {
+            ...(customObject.value as Record<string, unknown>),
+            cartConvertedDate: order.createdAt ?? new Date().toISOString(),
+          },
         },
       })
       .execute();
 
-    logger.info(`Successfully updated abandoned cart custom object ${cartId} with conversion timestamp: ${order.createdAt}`);
-
+    logger.info(`Cart ${cartId} converted into order ${order.id}.`);
   } catch (error) {
-    if (error instanceof Error && 'statusCode' in error && (error as any).statusCode === 404) {
-      logger.info(`No abandoned cart custom object found for cart ${cartId}, skipping update`);
+    if ((error as { statusCode?: number }).statusCode === 404) {
+      logger.info(`Cart ${cartId} was never recorded as abandoned, nothing to mark.`);
     } else {
-      logger.error(`Failed to update abandoned cart custom object for cart ${cartId}:`, error);
-      // Don't throw error - we don't want to fail the entire process if this update fails
+      logger.error(
+        `Could not mark cart ${cartId} as converted: ${
+          error instanceof Error ? error.message : 'unknown error'
+        }`
+      );
     }
   }
 
-  // Return success response
-  response.status(204).send();
+  return ack();
 };

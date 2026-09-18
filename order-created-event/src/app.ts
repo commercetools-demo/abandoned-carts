@@ -22,8 +22,10 @@ app.disable('x-powered-by');
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 
-// Define routes
-app.use('/event', EventRoutes);
+// Must match `endpoint` for this application in connect.yaml: Connect
+// delivers the Pub/Sub push to {assigned-url}/{endpoint}, so a route
+// mounted anywhere else answers 404 to every message.
+app.use('/order-created-event', EventRoutes);
 app.use('*', () => {
   throw new CustomError(404, 'Path not found.');
 });

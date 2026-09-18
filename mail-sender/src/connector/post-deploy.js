@@ -1,6 +1,6 @@
 import { createApiRoot } from '../client/create.client.js';
 import { assertError, assertString } from '../utils/assert.utils.js';
-import { createEmailDeliverySubscripition } from './actions.js';
+import { createEmailDeliverySubscription } from './actions.js';
 
 const CONNECT_GCP_TOPIC_NAME_KEY = 'CONNECT_GCP_TOPIC_NAME';
 const CONNECT_GCP_PROJECT_ID_KEY = 'CONNECT_GCP_PROJECT_ID';
@@ -13,7 +13,7 @@ async function postDeploy(properties) {
   assertString(projectId, CONNECT_GCP_PROJECT_ID_KEY);
 
   const apiRoot = createApiRoot();
-  await createEmailDeliverySubscripition(apiRoot, topicName, projectId);
+  await createEmailDeliverySubscription(apiRoot, topicName, projectId);
 }
 
 async function run() {

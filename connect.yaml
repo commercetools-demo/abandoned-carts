@@ -1,38 +1,62 @@
 deployAs:
+  # The Merchant Center surface: the abandonment rules, the email a shopper
+  # gets, the queue of carts that qualified, and a Run now button.
   - name: mc-app
     applicationType: merchant-center-custom-application
     configuration:
       standardConfiguration:
         - key: CUSTOM_APPLICATION_ID
-          description: The ID of the custom application.
+          description: >-
+            Assigned by the Merchant Center when the Custom Application is
+            registered under Settings > Custom Applications.
           required: true
         - key: CLOUD_IDENTIFIER
-          description: The cloud identifier.
+          description: >-
+            Merchant Center API region the app talks to. gcp-us for Google
+            Cloud Iowa, gcp-eu for Belgium.
+          required: true
           default: gcp-us
         - key: ENTRY_POINT_URI_PATH
-          description: The entry point URI path.
+          description: The Application entry point URI path chosen at registration.
           required: true
+          default: abandoned-carts
         - key: APPLICATION_URL
-          description: The application URL.
+          description: >-
+            The deployed URL of this application, as registered in the
+            Merchant Center. Known only after the first deployment, so the
+            first deploy carries a placeholder and the second carries the
+            real one.
+          required: true
           default: https://your_app_hostname.com
-      securedConfiguration: []
+
+  # Finds the carts that have gone quiet and records one Custom Object per
+  # cart. postDeploy creates the Type that carries the `abandoned` flag, so a
+  # fresh Project needs no manual setup.
   - name: service
     applicationType: service
-    endpoint: /service
+    endpoint: /abandoned-cart
+    scripts:
+      postDeploy: npm install && npm run build && npm run connector:post-deploy
+      preUndeploy: npm install && npm run build && npm run connector:pre-undeploy
     configuration:
       standardConfiguration:
-        - key: CTP_REGION
-          description: commercetools Composable Commerce API region
-          default: us-central1.gcp
-          required: true
+        - key: ABANDONED_CART_MAX_PER_RUN
+          description: >-
+            How many carts one run may record. A Project with a backlog of
+            stale carts would otherwise mail every one of them on the first
+            run. What the cap skipped is written to the service log.
+          required: false
+          default: '10'
+
+  # Runs the service on a schedule. ABANDONED_CART_SERVICE_URL is inherited
+  # and must be set to the service application's deployed URL — see the README.
   - name: job
     applicationType: job
     endpoint: /job
     properties:
-      schedule: "*/5 * * * *"
-  - name: order-created-event
-    applicationType: event
-    endpoint: /order-created-event
+      schedule: '*/5 * * * *'
+
+  # Watches for the Custom Object the service writes, and sends the email.
   - name: mail-sender
     applicationType: event
     endpoint: /mailSender
@@ -41,22 +65,60 @@ deployAs:
       preUndeploy: npm install && npm run connector:pre-undeploy
     configuration:
       standardConfiguration:
-        - key: CTP_REGION
-          description: commercetools Composable Commerce API region
-        - key: SENDER_EMAIL_ADDRESS
-          description: sender's email address displayed in the email
+        - key: ABANDONED_CART_FROM
+          description: >-
+            From address on the email, for example
+            "Acme <carts@mail.acme.com>". The domain must be verified in
+            Resend. Left at the default, Resend only delivers to the address
+            that owns the account.
+          required: false
+          default: Abandoned Carts <onboarding@resend.dev>
+        - key: ABANDONED_CART_DEMO_RECIPIENT
+          description: >-
+            Demo mode. When set, every email is delivered to this one address
+            instead of the shopper's, with a line naming who it was addressed
+            to. Delivery is otherwise real. Leave UNSET in production.
+          required: false
       securedConfiguration:
-        - key: EMAIL_PROVIDER_API_KEY
-          description: The API key used to communicate with email provider
+        - key: RESEND_API_KEY
+          description: >-
+            Resend API key. Leave unset to run without sending: carts are
+            still recorded and every message is rendered and stored on the
+            Custom Object, which the Merchant Center application shows.
+          required: false
+
+  # Marks a recorded cart as converted when it turns into an order.
+  - name: order-created-event
+    applicationType: event
+    endpoint: /order-created-event
+    scripts:
+      postDeploy: npm install && npm run build && npm run connector:post-deploy
+      preUndeploy: npm install && npm run build && npm run connector:pre-undeploy
+
 inheritAs:
+  # Connect generates one API Client for the whole Connector and injects
+  # CTP_PROJECT_KEY / CTP_CLIENT_ID / CTP_CLIENT_SECRET / CTP_SCOPE /
+  # CTP_API_URL / CTP_AUTH_URL at runtime. Those keys must not be declared
+  # above or the two collide.
   apiClient:
     scopes:
       - manage_key_value_documents
       - manage_orders
       - view_customers
       - manage_subscriptions
+      - manage_types
   configuration:
     standardConfiguration:
+      - key: CTP_REGION
+        description: >-
+          Region hosting the commercetools Project, used to build the auth
+          host. us-central1.gcp for Google Cloud Iowa.
+        required: true
+        default: us-central1.gcp
       - key: ABANDONED_CART_SERVICE_URL
-        description: Service URL
+        description: >-
+          Base URL of the service application, used by the job to trigger a
+          run and by the Merchant Center application's Run now button. Connect
+          assigns it at deployment, so it is set on the second deploy.
+        required: true
         default: http://localhost:8080

@@ -1,1 +1,4 @@
-export { useConfigurationFetcher, useConfigurationUpdater } from './use-configuration-connector';
+export {
+  useConfigurationFetcher,
+  useConfigurationUpdater,
+} from './use-configuration-connector';

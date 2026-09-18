@@ -206,6 +206,12 @@ mc-app/dist/
 service/build/
 service/dist/
 
+# Compiled output of the other TypeScript applications
+job/build/
+job/dist/
+order-created-event/build/
+order-created-event/dist/
+
 # Test coverage
 coverage/
 .nyc_output/

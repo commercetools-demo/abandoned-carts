@@ -5,12 +5,16 @@ import Constraints from '@commercetools-uikit/constraints';
 import Spacings from '@commercetools-uikit/spacings';
 import Text from '@commercetools-uikit/text';
 import TextInput from '@commercetools-uikit/text-input';
+import NumberInput from '@commercetools-uikit/number-input';
 import SelectInput from '@commercetools-uikit/select-input';
 import RichTextInput from '@commercetools-uikit/rich-text-input';
 import PrimaryButton from '@commercetools-uikit/primary-button';
 import SecondaryButton from '@commercetools-uikit/secondary-button';
 import { useDiscountsFetcher } from '../../hooks/use-discounts-connector';
-import { useConfigurationFetcher, useConfigurationUpdater } from '../../hooks/use-configuration-connector';
+import {
+  useConfigurationFetcher,
+  useConfigurationUpdater,
+} from '../../hooks/use-configuration-connector';
 import messages from './messages';
 
 const Configuration = () => {
@@ -26,47 +30,51 @@ const Configuration = () => {
   const [richTextKey, setRichTextKey] = useState(0); // Key to force RichTextInput re-render
 
   // Fetch discounts from CommerceTools
-  const { discountsPaginatedResult, error: discountsError, loading: discountsLoading } = useDiscountsFetcher();
-  
+  const {
+    discountsPaginatedResult,
+    error: discountsError,
+    loading: discountsLoading,
+  } = useDiscountsFetcher();
+
   // Fetch existing configuration
-  const { configuration: existingConfiguration, error: configError, loading: configLoading } = useConfigurationFetcher();
-  
+  const {
+    configuration: existingConfiguration,
+    error: configError,
+    loading: configLoading,
+  } = useConfigurationFetcher();
+
   // Configuration updater
-  const { loading: saveLoading, execute: saveConfiguration } = useConfigurationUpdater();
+  const { loading: saveLoading, execute: saveConfiguration } =
+    useConfigurationUpdater();
 
   // Filter and transform fetched cart discounts into dropdown options
-  const discountOptions = discountsPaginatedResult?.results
-    ?.filter((discount) => {
-      // Only show discounts that have the abandoned cart predicate
-      return discount.cartPredicate?.includes('custom.abandoned = true');
-    })
-    ?.map((discount) => {
-      // Get the current locale from the intl context
-      const currentLocale = intl.locale;
-      
-      // Debug: log the discount data to see what we're getting
-      console.log('Discount data:', {
-        id: discount.id,
-        key: discount.key,
-        nameAllLocales: discount.nameAllLocales,
-        currentLocale
-      });
-      
-      // Try to find name in current locale, then English, then use key, then id
-      const name = discount.nameAllLocales?.find(name => name.locale === currentLocale)?.value || 
-                   discount.nameAllLocales?.find(name => name.locale === 'en')?.value || 
-                   discount.nameAllLocales?.[0]?.value || // Use first available locale
-                   discount.key || 
-                   discount.id;
-      
-      return {
-        value: discount.id,
-        label: name,
-      };
-    }) || [];
+  const discountOptions =
+    discountsPaginatedResult?.results
+      ?.filter((discount) => {
+        // Only show discounts that have the abandoned cart predicate
+        return discount.cartPredicate?.includes('custom.abandoned = true');
+      })
+      ?.map((discount) => {
+        const currentLocale = intl.locale;
+
+        // Try to find name in current locale, then English, then use key, then id
+        const name =
+          discount.nameAllLocales?.find((name) => name.locale === currentLocale)
+            ?.value ||
+          discount.nameAllLocales?.find((name) => name.locale === 'en')
+            ?.value ||
+          discount.nameAllLocales?.[0]?.value || // Use first available locale
+          discount.key ||
+          discount.id;
+
+        return {
+          value: discount.id,
+          label: name,
+        };
+      }) || [];
 
   const handleInputChange = (field, value) => {
-    setFormData(prev => ({
+    setFormData((prev) => ({
       ...prev,
       [field]: value,
     }));
@@ -86,7 +94,7 @@ const Configuration = () => {
         emailTemplate: emailTemplateValue, // Default to empty paragraph for RichTextInput
       });
       // Force RichTextInput to re-render with new data
-      setRichTextKey(prev => prev + 1);
+      setRichTextKey((prev) => prev + 1);
     }
   }, [existingConfiguration]);
 
@@ -95,21 +103,31 @@ const Configuration = () => {
       setSaveStatus(null); // Clear any previous status
       await saveConfiguration(formData);
       setSaveStatus('success');
-      
+
       // Clear success message after 3 seconds
       setTimeout(() => setSaveStatus(null), 3000);
     } catch (error) {
       setSaveStatus('error');
       console.error('Error saving configuration:', error);
-      
+
       // Clear error message after 5 seconds
       setTimeout(() => setSaveStatus(null), 5000);
     }
   };
 
+  // Discard the edits and go back to what is stored. A Cancel that does
+  // nothing is worse than no Cancel: it reads as "reverted" and is not.
   const handleCancel = () => {
-    // TODO: Implement cancel functionality
-    console.log('Canceling configuration changes');
+    const configData = existingConfiguration?.value ?? {};
+    setFormData({
+      abandonAfterHours: configData.abandonAfterHours || '',
+      ignoreCartsOlderThan: configData.ignoreCartsOlderThan || '',
+      discount: configData.discount || '',
+      emailSubject: configData.emailSubject || '',
+      emailTemplate: configData.emailTemplate || '<p></p>',
+    });
+    setRichTextKey((prev) => prev + 1);
+    setSaveStatus(null);
   };
 
   return (
@@ -121,36 +139,51 @@ const Configuration = () => {
         <Spacings.Stack scale="l">
           {/* Abandon After Hours Field */}
           <Spacings.Inline scale="s" alignItems="center">
-            <Text.Body as="label" intlMessage={messages.abandonAfterHoursLabel} />
-            <TextInput
+            <Text.Body
+              as="label"
+              intlMessage={messages.abandonAfterHoursLabel}
+            />
+            {/* NumberInput, not TextInput with type="number": TextInput does
+                not forward min/max/step to the input, so the bounds were
+                never enforced and fractions of an hour could not be typed. */}
+            <NumberInput
               value={formData.abandonAfterHours}
-              onChange={(event) => handleInputChange('abandonAfterHours', event.target.value)}
-              placeholder={intl.formatMessage(messages.abandonAfterHoursPlaceholder)}
-              type="number"
-              min="1"
-              max="168"
+              onChange={(event) =>
+                handleInputChange('abandonAfterHours', event.target.value)
+              }
+              placeholder={intl.formatMessage(
+                messages.abandonAfterHoursPlaceholder
+              )}
+              min={0}
+              max={168}
+              step={0.25}
               horizontalConstraint={3}
             />
             <Text.Detail tone="secondary">
-              hours
+              hours (0.25 is fifteen minutes)
             </Text.Detail>
           </Spacings.Inline>
 
           {/* Ignore Carts Older Than Field */}
           <Spacings.Inline scale="s" alignItems="center">
-            <Text.Body as="label" intlMessage={messages.ignoreCartsOlderThanLabel} />
-            <TextInput
+            <Text.Body
+              as="label"
+              intlMessage={messages.ignoreCartsOlderThanLabel}
+            />
+            <NumberInput
               value={formData.ignoreCartsOlderThan}
-              onChange={(event) => handleInputChange('ignoreCartsOlderThan', event.target.value)}
-              placeholder={intl.formatMessage(messages.ignoreCartsOlderThanPlaceholder)}
-              type="number"
-              min="1"
-              max="365"
+              onChange={(event) =>
+                handleInputChange('ignoreCartsOlderThan', event.target.value)
+              }
+              placeholder={intl.formatMessage(
+                messages.ignoreCartsOlderThanPlaceholder
+              )}
+              min={1}
+              max={365}
+              step={1}
               horizontalConstraint={3}
             />
-            <Text.Detail tone="secondary">
-              days
-            </Text.Detail>
+            <Text.Detail tone="secondary">days</Text.Detail>
           </Spacings.Inline>
 
           {/* Discount Field */}
@@ -162,12 +195,15 @@ const Configuration = () => {
               <Text.Detail tone="critical">Error loading discounts</Text.Detail>
             ) : discountOptions.length === 0 ? (
               <Text.Detail tone="secondary">
-                No abandoned cart discounts found. Create cart discounts with predicate "custom.abandoned = true" to see them here.
+                No abandoned cart discounts found. Create cart discounts with
+                predicate "custom.abandoned = true" to see them here.
               </Text.Detail>
             ) : (
               <SelectInput
                 value={formData.discount}
-                onChange={(event) => handleInputChange('discount', event.target.value)}
+                onChange={(event) =>
+                  handleInputChange('discount', event.target.value)
+                }
                 options={discountOptions}
                 placeholder={intl.formatMessage(messages.discountPlaceholder)}
                 horizontalConstraint={8}
@@ -180,7 +216,9 @@ const Configuration = () => {
             <Text.Body as="label" intlMessage={messages.emailSubjectLabel} />
             <TextInput
               value={formData.emailSubject}
-              onChange={(event) => handleInputChange('emailSubject', event.target.value)}
+              onChange={(event) =>
+                handleInputChange('emailSubject', event.target.value)
+              }
               placeholder={intl.formatMessage(messages.emailSubjectPlaceholder)}
             />
           </Spacings.Stack>
@@ -191,8 +229,12 @@ const Configuration = () => {
             <RichTextInput
               key={richTextKey} // Force re-render when data changes
               value={formData.emailTemplate}
-              onChange={(event) => handleInputChange('emailTemplate', event.target.value)}
-              placeholder={intl.formatMessage(messages.emailTemplatePlaceholder)}
+              onChange={(event) =>
+                handleInputChange('emailTemplate', event.target.value)
+              }
+              placeholder={intl.formatMessage(
+                messages.emailTemplatePlaceholder
+              )}
               horizontalConstraint="scale"
               defaultExpandMultilineText={true}
             />

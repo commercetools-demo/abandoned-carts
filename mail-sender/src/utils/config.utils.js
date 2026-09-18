@@ -14,7 +14,7 @@ export default function readConfiguration() {
     clientId: process.env.CTP_CLIENT_ID,
     clientSecret: process.env.CTP_CLIENT_SECRET,
     projectKey: process.env.CTP_PROJECT_KEY,
-    scope: process.env.CTP_SCOPES,
+    scope: process.env.CTP_SCOPE,
     region: process.env.CTP_REGION,
   };
 
