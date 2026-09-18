@@ -1,150 +1,156 @@
 # Features
 
-Code-derived inventory of what this repo implements. Bullets and key file paths —
-the mechanism lives in `docs/how-it-works.md`, the walkthrough in `docs/demo-script.md`.
+Code-derived inventory of what this repo implements. Bullets and key file paths.
 
-_Last generated: 2026-09-02 by feature-doc._
+_Last generated: 2026-09-18._
 
-Built from scratch as a commercetools Connect connector (`connect.yaml`) — not a fork
-of any of the storefront starters. It is a five-module abandoned-cart funnel: a
-Merchant Center Custom Application (`mc-app`), an HTTP processing `service`, a cron
-`job` that triggers it, and two event handlers (`mail-sender`, `order-created-event`)
-that react to Google Cloud Pub/Sub push messages. commercetools Custom Objects are the
-only system of record — there is no separate database. The `mc-app` dev config points
-at CT project `medtronic-poc` (`mc-app/custom-application-config.mjs`).
+A commercetools Connect connector, built from scratch rather than forked from a
+storefront starter. Five applications (`connect.yaml`): a Merchant Center Custom
+Application (`mc-app`), an HTTP `service` that does the finding, a cron `job` that
+triggers it, and two event handlers (`mail-sender`, `order-created-event`) fed by
+Pub/Sub topics Connect provisions. commercetools Custom Objects are the entire
+system of record — there is no database.
 
-## Cart Abandonment Detection (`job` + `service`)
+## Cart abandonment detection (`job` + `service`)
 
-- Scheduled job posts to the abandoned-cart service every 5 minutes (`connect.yaml`
+- The scheduled job posts to the service every five minutes (`connect.yaml`
   `job.properties.schedule: */5 * * * *`, `job/src/controllers/job.controller.ts`).
-- Service batches through every `Active` cart whose `lastModifiedAt` falls inside a
-  configurable abandonment window (older than `abandonAfterHours`, newer than
-  `ignoreCartsOlderThan` days) and that isn't already flagged, via a single CT query
+  It resolves the endpoint with `new URL` against an absolute path, so
+  `ABANDONED_CART_SERVICE_URL` works whether it holds the origin or the full
+  endpoint URL Connect reports.
+- The service pages through every `Active` cart whose `lastModifiedAt` falls inside
+  the configured window — older than `abandonAfterHours`, newer than
+  `ignoreCartsOlderThan` days — and that is not already flagged, in one CT query
   predicate (`service/src/services/abandoned-cart.service.ts`).
-- For each newly-abandoned cart with a customer email: creates an
-  `abandoned-carts/{cartId}` custom object snapshotting email, total, currency and
-  abandonment date, then sets a custom field `abandoned: true` on the cart itself
-  (custom type `abandoned-cart-custom`) so it is excluded from the next run.
-- Every run — success or failure — writes an `abandoned-cart/service-log` custom
-  object with counts processed/fetched/created, duration, and the configuration used;
-  a failed run is logged with `status: "error"` and the error message rather than
-  silently dropped.
-- Per-cart failures are caught and skipped so one bad cart doesn't abort the batch;
-  the cart-update-flag step is likewise best-effort and doesn't fail the run.
-- Configuration (thresholds, discount, email subject/template) is read from a single
-  `abandoned-cart/configuration` custom object rather than env vars, so the abandonment
-  window and copy can be changed live from the Merchant Center app.
-- "Run Now" in the mc-app hits this exact HTTP endpoint on demand, so the funnel can be
-  demoed without waiting on the cron.
+- The recipient comes from `cart.customerEmail`, and from the customer record when
+  the cart carries none. A storefront that signs a customer in without calling
+  `setCustomerEmail` leaves that field empty on every cart it makes, so reading
+  only it finds nothing to do and reports a clean run.
+- Empty carts are skipped and counted: a cart with no line items is a visit, not an
+  abandoned purchase.
+- `ABANDONED_CART_MAX_PER_RUN` (default 10) bounds one run. A Project with a backlog
+  of stale carts would otherwise record all of them at once, and mail every one of
+  those shoppers because of an install. What the cap held back is reported from the
+  query's own total, not from what the loop happened to reach.
+- Each recorded cart gets an `abandoned-carts/{cartId}` Custom Object holding email,
+  total, currency, abandonment date and item count, and — unless
+  `ABANDONED_CART_MARK_CARTS=false` — `custom.abandoned = true` on the cart itself.
+  A Cart carries exactly one custom Type, so marking replaces whatever Type it had;
+  the switch exists for Projects where something else already puts one on carts.
+- A cart is never recorded twice: the service reads
+  `abandoned-carts/{cartId}` before writing. Correctness does not depend on the cart
+  flag, which is best-effort and logged when it fails.
+- Every run writes `abandoned-cart/service-log` — counts, each skip reason, duration,
+  the configuration used, and whether marking was on. A failed run writes the same
+  object with `status: "error"` and the message.
+- Per-cart failures are caught so one bad cart cannot abort the batch.
+- The rules live in the `abandoned-cart/configuration` Custom Object, not in env
+  vars, so the window and the copy change from the Merchant Center without a
+  redeploy.
+- `postDeploy` creates the `abandoned-cart-custom` Type, and leaves an existing one
+  alone: deleting a Type detaches it from every Cart carrying it, which would
+  un-mark every cart the connector has recorded and mail all of those shoppers again
+  (`service/src/connector/actions.ts`).
 
-## Email Notifications (`mail-sender`)
+## Email (`mail-sender`)
 
-- Subscribes directly to Google Cloud Pub/Sub (or Azure Service Bus) for
-  `key-value-document` (custom object) create events — no commercetools Subscription
-  filter on container, so every custom object create arrives and is filtered in-app.
-- A handler factory + message validators route only abandoned-cart-shaped payloads to
-  `AbandonedCartHandler`; anything else is logged and ignored
-  (`mail-sender/src/factory/handler.factory.js`, `validators/message.validators.js`).
-- On an abandoned-cart message: re-fetches the cart and customer from commercetools,
-  loads the MC-authored subject/template from `abandoned-cart/configuration`, and
-  substitutes `[firstName]` in the template with the customer's first name
-  (`mail-sender/src/handlers/abandoned-cart.handler.js`).
-- Sends via SendGrid; if no rich-text template is configured it falls back to a
-  generated plain HTML/text summary (cart total, ID, abandonment date, item count)
-  (`mail-sender/src/handlers/generic.handler.js`).
-- Stamps the `abandoned-carts/{cartId}` object with `emailSentDate` after a successful
-  send, which is what drives the "Email Sent" column in the mc-app carts table.
-- The only one of the five modules whose Connect deploy scripts are actually wired up:
-  `connect.yaml` runs its `postDeploy`/`preUndeploy` to create/tear down the Pub/Sub
-  subscription automatically (`mail-sender/src/connector/{post-deploy,pre-undeploy}.js`).
+- A Change Subscription on `key-value-document`, created by `postDeploy`
+  (`mail-sender/src/connector/actions.js`). Change Subscriptions cannot be filtered
+  by container, so every Custom Object write in the Project arrives and
+  `isAbandonedCartMessage` rejects it in one comparison before anything is fetched
+  (`mail-sender/src/validators/message.validators.js`).
+- The work happens before the acknowledgement. Acknowledging first can never miss
+  the ten-second window, but the platform is free to freeze the instance once a
+  response has been sent, so the send that was supposed to follow may never run.
+- Delivery is **Resend**, over `fetch` with a five-second timeout — an event
+  application must acknowledge within ten seconds, so a slow mail API loses rather
+  than taking the whole delivery down (`mail-sender/src/handlers/generic.handler.js`).
+- `ABANDONED_CART_DEMO_RECIPIENT` sends every message to one inbox instead of the
+  shopper's, with a footer naming who it was addressed to. A demo Project's carts
+  carry whatever addresses people typed into the storefront; this keeps delivery
+  real while making it impossible to reach anyone who did not ask.
+- Without `RESEND_API_KEY` the connector still runs end to end: the message is
+  rendered and recorded, and nothing is sent.
+- `[firstName]` in the merchandiser's template is substituted from the customer
+  record. With no template stored, a plain summary is generated from the cart
+  (`generateHtmlFromTemplateData`).
+- The attempt is recorded on the Custom Object either way —
+  `emailAttemptedDate`, `emailDeliveredTo`, `emailDeliveryDetail`, the subject and
+  the body as sent. `emailSentDate` is set only on a real delivery, so a failure
+  stays visible as "Not sent" with the reason next to it.
+- A redelivery finds `emailSentDate` already set and stops. The Subscription
+  promises at-least-once, so this is what keeps one restock from mailing a shopper
+  twice.
 
-## Order Conversion Tracking (`order-created-event`)
+## Order conversion tracking (`order-created-event`)
 
-- Receives `OrderCreated` Pub/Sub push messages, resolves the originating cart ID from
-  the order payload, and stamps the matching `abandoned-carts/{cartId}` custom object
-  with `cartConvertedDate` (`order-created-event/src/controllers/event.controller.ts`)
-  — the "Cart Converted" column in the mc-app carts table.
-- Tolerant of noise: a malformed body, a non-`OrderCreated` notification, an order with
-  no cart, or a 404 (cart was never marked abandoned) all resolve to a `204` no-op
-  instead of an error.
-- Stubbed / inconsistent with its own job: this module's `connector/actions.ts` and
-  `post-deploy.ts` provision a `CustomerCreated` Pub/Sub subscription, not an
-  `OrderCreated` one — unmodified connect-application-kit scaffold left over from
-  the template, unrelated to the `OrderCreated` handling the controller actually does.
-  Neither this module's nor `service`'s connector scripts are referenced in
-  `connect.yaml` (only `mail-sender`'s are), so neither runs on a real Connect deploy;
-  the real `OrderCreated` subscription has to be created by hand, and `test/` ships
-  polling/replay scripts to exercise the handler locally instead
-  (`test/order-created-polling.ts`, `test/resend-order-created-event.ts`).
+- `postDeploy` creates an `OrderCreated` Subscription keyed to this connector, so it
+  cannot collide with a Project's own order Subscriptions — which commonly exist
+  alongside it (`order-created-event/src/connector/actions.ts`).
+- Resolves the originating cart from the order and stamps
+  `cartConvertedDate` on its `abandoned-carts/{cartId}` object — the Cart Converted
+  column in the Merchant Center application.
+- Every path acknowledges. The queue retries anything that is not 2xx for seven
+  days, and none of these becomes handleable on a retry: a malformed body, a
+  different message type, an order with no cart, or a cart nobody recorded.
 
-## Merchant Center Administration (`mc-app`)
+## Merchant Center administration (`mc-app`)
 
-- Three-tab Custom Application — Configuration, Abandoned Carts, Service
-  Administration — registered via `mc-app/custom-application-config.mjs` and
-  `src/routes.jsx`.
-- **Configuration tab**: sets the abandon-after-hours / ignore-carts-older-than-days
-  thresholds, an email subject, and a WYSIWYG rich-text email body
-  (`@commercetools-uikit/rich-text-input`); also queries live CT cart discounts and
-  offers only the ones whose predicate contains `custom.abandoned = true` as a discount
-  to associate with the funnel (`mc-app/src/components/configuration/configuration.jsx`).
-  Saves to the `abandoned-cart/configuration` custom object.
-- **Abandoned Carts tab**: sortable table over every `abandoned-carts/*` custom object
-  (email, total, abandonment date, email-sent date, cart-converted date), with a row
-  click that opens a raw-JSON detail modal for the underlying custom object
-  (`mc-app/src/components/carts/carts.jsx`).
-- **Service Administration tab**: shows the last run's stats from the
-  `abandoned-cart/service-log` object (carts fetched/created, duration, last error) and
-  a "Run Now" button that first health-checks the service, then triggers the same
-  processing endpoint the scheduled job calls
-  (`mc-app/src/components/service-administration/service-administration.jsx`).
-- Stubbed: the discount picked in the Configuration tab is persisted to the config
-  custom object, but nothing in `service` or `mail-sender` reads it back or applies a
-  discount to a cart — there is no code path that acts on the selection. The
-  Configuration tab's "Cancel" button is also a no-op (`console.log` only).
+- Three screens — Configuration, Abandoned Carts, Service Administration
+  (`mc-app/src/routes.jsx`).
+- **Configuration** sets the two boundaries, the email subject and a rich-text body,
+  and offers the Project's cart discounts whose predicate contains
+  `custom.abandoned = true`. The abandonment window accepts quarter-hours, so the
+  behaviour can be shown without waiting for one.
+- **Abandoned Carts** is a sortable table over the `abandoned-carts` container —
+  email, total, abandonment date, email-sent date, converted date — with a row click
+  that opens the underlying Custom Object as JSON.
+- **Service Administration** shows the last run from `abandoned-cart/service-log`,
+  including what each skip reason accounted for and what the per-run cap held back,
+  and a Run now button that triggers the same endpoint the schedule calls.
+- The entry point path is read from the environment. Merchant Center entry point
+  paths are globally unique, so a registration may have to use something other than
+  the obvious name — and the permission keys are derived from it, so a hardcoded
+  constant that disagrees produces an application that loads and refuses every user
+  (`mc-app/src/constants.js`).
+- OAuth scopes cover Custom Objects as well as orders. Every screen reads or writes
+  Custom Objects, so without `view_key_value_documents` /
+  `manage_key_value_documents` the rules cannot be saved and the queue comes up
+  empty.
 
-## commercetools Integrations & Data Model
+## commercetools integration and data model
 
-- Custom Objects as the entire system of record — no external database anywhere in the
-  stack:
-  - `abandoned-cart` / `configuration` — funnel thresholds, discount choice, email copy
-  - `abandoned-cart` / `service-log` — last-run statistics and error state
-  - `abandoned-carts` / `{cartId}` — one record per abandoned cart, its lifecycle
-    (abandoned → emailed → converted) tracked entirely via fields added over time
-- Custom Type `abandoned-cart-custom` adds the `abandoned` boolean field to `cart`,
-  which both drives the detection query and prevents re-processing.
-- Two direct Google Cloud Pub/Sub push subscriptions carry the event-driven half of the
-  flow (custom-object-create → `mail-sender`, `OrderCreated` → `order-created-event`) —
-  there is no commercetools Subscription-side type filter, and no CT API Extension in
-  the live path.
-- `service/src/connector/actions.ts` defines an unused CT API Extension
-  (`myconnector-cartUpdateExtension`, triggered on cart `Update`) and an unused
-  `cart-discount` custom type (`myconnector-cartDiscountType`) — connect-application-kit
-  boilerplate never renamed or wired to real behavior; its `cartController` handles
-  `Create` with a no-op `recalculate` action and `Update` with an empty `break`.
+- Custom Objects are the whole system of record:
+  - `abandoned-cart` / `configuration` — the rules, the discount choice, the copy
+  - `abandoned-cart` / `service-log` — the last run
+  - `abandoned-carts` / `{cartId}` — one record per cart, carrying its whole
+    lifecycle: recorded → emailed → converted
+- Custom Type `abandoned-cart-custom` puts the `abandoned` boolean on carts
+  (resource type `order`, which is what Carts use), driving both the detection
+  predicate and the Cart Discount that can be offered in the email.
+- Connect generates one API Client for the connector with five scopes —
+  `manage_key_value_documents`, `manage_orders`, `view_customers`,
+  `manage_subscriptions`, `manage_types`. Nothing that can write a product or price.
+- Two Pub/Sub topics, both provisioned by Connect and named by no code in the
+  repository: Custom Object changes to `mail-sender`, `OrderCreated` to
+  `order-created-event`.
 
-## Demo Tooling & Test Scripts (`test/`)
+## Not implemented
 
-- `abandoned-cart-polling.ts` / `order-created-polling.ts` poll the raw GCP Pub/Sub
-  topics directly and forward messages to the locally-running `mail-sender` /
-  `order-created-event` services, for local development without a deployed
-  subscription.
-- `check-abandoned-status.ts` / `unset-abandoned-carts.ts` audit and reset the
-  `abandoned` custom field across every cart, so a demo can be re-run from a clean
-  state.
-- `create-order-from-cart.ts` is an interactive CLI that lists active carts and walks
-  through converting one to an order, to drive the conversion-tracking path live.
-- `resend-order-created-event.ts` replays a captured `OrderCreated` payload
-  (`order-created-messages.json`) against a locally running `order-created-event`
-  handler.
-- `list-custom-objects.ts`, `delete-custom-object.ts`, `delete-all-custom-objects.ts`,
-  `create.ts` round out inspection/cleanup tooling for the custom-object-backed data
-  model.
+- The discount chosen in Configuration is stored and nothing reads it back. The
+  connector does not apply a discount to a cart; the intended path is a Cart
+  Discount whose predicate matches the `abandoned` flag, which a merchandiser
+  creates in the Merchant Center.
+- An order placed from a cart that was never recorded leaves nothing to mark.
+  Conversion tracking measures carts this connector chased, not all carts.
 
-## Distinctive capability
+## Local gate
 
-There is no starter to diff against — the whole repo is the distinctive thing: a
-five-service cart-abandonment-to-conversion funnel where commercetools Custom Objects
-(not a database) hold every stage of state, Merchant Center is the authoring surface
-for both the abandonment rules and the email copy, and Google Cloud Pub/Sub push
-subscriptions (rather than commercetools Subscriptions filtered server-side, or a CT
-API Extension) carry the event-driven half of the flow.
+`./scripts/predeploy.sh` runs what Connect runs, in Connect's order: install from
+the lockfile, `npm audit --audit-level=high`, typecheck, lint, build, unit tests —
+36 tests across four applications. The audit is in there because Connect's SCA scan
+is what rejects a Connector and its report names only the stage that failed. The
+scan reads the whole repository, not just the applications `connect.yaml` names.
+
+`scripts/connect.mjs` drives registration and deployment: `status`, `register`,
+`deploy`, `wire`, `logs`.
