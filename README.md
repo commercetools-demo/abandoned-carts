@@ -33,6 +33,12 @@ service's `postDeploy` creates. That flag is what a Cart Discount matches on:
 give a discount the predicate `custom.abandoned = true` and it becomes the
 incentive the email carries.
 
+A Cart carries exactly one custom Type, so marking replaces whatever Type it
+already had. In a Project where something else already puts one on carts —
+an API Extension, another connector — set `ABANDONED_CART_MARK_CARTS=false`.
+It costs the Cart Discount and nothing else: what keeps a cart from being
+recorded and emailed twice is the Custom Object, not the flag.
+
 ## Two boundaries and a cap
 
 A merchandiser sets two numbers. A cart is abandoned once it has been
@@ -68,6 +74,7 @@ Connect generates the API Client and injects `CTP_PROJECT_KEY`,
 | `CTP_REGION` | all | yes | `us-central1.gcp` for Google Cloud Iowa |
 | `ABANDONED_CART_SERVICE_URL` | all | yes | The service's URL. Known only after the first deploy — see below |
 | `ABANDONED_CART_MAX_PER_RUN` | `service` | no | Carts one run may record. Default 10 |
+| `ABANDONED_CART_MARK_CARTS` | `service` | no | `false` leaves carts untouched. Default true |
 | `RESEND_API_KEY` | `mail-sender` | no | Unset means render and record, send nothing |
 | `ABANDONED_CART_FROM` | `mail-sender` | no | Must be a domain verified in Resend |
 | `ABANDONED_CART_DEMO_RECIPIENT` | `mail-sender` | no | Every email goes here instead of the shopper's address |

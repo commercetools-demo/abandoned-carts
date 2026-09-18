@@ -47,6 +47,15 @@ deployAs:
             run. What the cap skipped is written to the service log.
           required: false
           default: '10'
+        - key: ABANDONED_CART_MARK_CARTS
+          description: >-
+            Whether to write custom.abandoned onto the cart. A Cart carries
+            exactly one custom Type, so this replaces whatever Type it
+            already had — set it to false in a Project where something else
+            already puts one on carts. Declining costs only the Cart
+            Discount; nothing about correctness depends on the flag.
+          required: false
+          default: 'true'
 
   # Runs the service on a schedule. ABANDONED_CART_SERVICE_URL is inherited
   # and must be set to the service application's deployed URL — see the README.

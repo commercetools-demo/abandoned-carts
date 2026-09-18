@@ -292,3 +292,47 @@ describe('processAbandonedCarts', () => {
     expect(result.error).toContain('No configuration found');
   });
 });
+
+// A Cart carries exactly one custom Type, so marking replaces whatever it
+// already had. In a Project where an API Extension or another connector
+// already puts one on carts, that is somebody else's data.
+describe('ABANDONED_CART_MARK_CARTS', () => {
+  afterEach(() => {
+    delete process.env.ABANDONED_CART_MARK_CARTS;
+  });
+
+  const oneCart = () => ({
+    configuration: { abandonAfterHours: '24', ignoreCartsOlderThan: '30' },
+    carts: [
+      {
+        id: 'cart-1',
+        version: 1,
+        customerEmail: 'jen@example.com',
+        lineItems: [{}],
+        totalPrice: { centAmount: 1000, currencyCode: 'USD' },
+        lastModifiedAt: HOURS_AGO(25),
+      },
+    ],
+  });
+
+  it('leaves the cart untouched when marking is off', async () => {
+    process.env.ABANDONED_CART_MARK_CARTS = 'false';
+    const fake = fakeApiRoot(oneCart());
+    (createApiRoot as jest.Mock).mockReturnValue(fake.root);
+
+    const result = await processAbandonedCarts();
+
+    expect(result.totalCreated).toBe(1);
+    expect(fake.written()).toHaveLength(1);
+    expect(fake.marked()).toEqual([]);
+  });
+
+  it('marks by default', async () => {
+    const fake = fakeApiRoot(oneCart());
+    (createApiRoot as jest.Mock).mockReturnValue(fake.root);
+
+    await processAbandonedCarts();
+
+    expect(fake.marked()).toEqual(['cart-1']);
+  });
+});
