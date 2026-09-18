@@ -6,6 +6,7 @@
  *   node scripts/connect.mjs register --tag 1.1.2
  *   node scripts/connect.mjs deploy
  *   node scripts/connect.mjs wire          # second pass: the assigned URLs
+ *   node scripts/connect.mjs ensure        # prove postDeploy actually ran
  *   node scripts/connect.mjs logs
  *
  * Every step is idempotent, so a rerun after a failure picks up where it
@@ -305,6 +306,78 @@ async function cmdWire() {
   );
 }
 
+/**
+ * Prove the postDeploy scripts actually ran.
+ *
+ * On a preview deployment a connector's own postDeploy does not reliably
+ * run, and the report says "Post-deployment setup succeeded" either way.
+ * That is the worst shape a failure can take here: the connector is
+ * deployed, healthy, and silently deaf — no Subscription, so no email ever.
+ *
+ * Each redeploy also gets a NEW Pub/Sub topic, so a Subscription left
+ * aimed at the previous one is just as silent as none at all. This repoints
+ * rather than skipping when it already exists.
+ */
+async function cmdEnsure() {
+  const dep = await deployment();
+  if (!dep) {
+    console.error('No deployment yet.');
+    process.exit(1);
+  }
+
+  const apps = Object.fromEntries(
+    (dep.details?.applications ?? []).map((a) => [a.applicationName, a])
+  );
+
+  const wanted = [
+    {
+      app: 'mail-sender',
+      key: 'abandoned-cart-created-subscription',
+      body: (destination) => ({ destination, changes: [{ resourceTypeId: 'key-value-document' }] }),
+    },
+    {
+      app: 'order-created-event',
+      key: 'abandoned-cart-order-created-subscription',
+      body: (destination) => ({
+        destination,
+        messages: [{ resourceTypeId: 'order', types: ['OrderCreated'] }],
+      }),
+    },
+  ];
+
+  for (const { app, key, body } of wanted) {
+    const topic = apps[app]?.topic;
+    const gcpProject = apps[app]?.topicProjectId ?? apps[app]?.projectId;
+    if (!topic) {
+      console.log(`${key}: Connect has not reported a topic for ${app} yet — skipped`);
+      continue;
+    }
+    const destination = { type: 'GoogleCloudPubSub', topic, projectId: gcpProject };
+    const existing = await ctGet(`/subscriptions?where=${encodeURIComponent(`key = "${key}"`)}`);
+    const current = existing.results[0];
+
+    if (current?.destination?.topic === topic) {
+      console.log(`${key}: already pointed at ${topic}`);
+      continue;
+    }
+    if (current) {
+      await ctDelete(`/subscriptions/key=${key}?version=${current.version}`);
+      console.log(`${key}: was aimed at ${current.destination?.topic ?? 'nothing'} — replacing`);
+    }
+    await ctPost('/subscriptions', { key, ...body(destination) });
+    console.log(`${key}: now pointed at ${topic}`);
+  }
+
+  const types = await ctGet(
+    `/types?where=${encodeURIComponent('key = "abandoned-cart-custom"')}`
+  );
+  console.log(
+    types.results.length
+      ? 'abandoned-cart-custom: present'
+      : 'abandoned-cart-custom: MISSING — run the service postDeploy'
+  );
+}
+
 async function cmdLogs() {
   const dep = await deployment();
   if (!dep) {
@@ -318,8 +391,34 @@ async function cmdLogs() {
   console.log(JSON.stringify(logs, null, 1).slice(0, 8000));
 }
 
+/** The commercetools HTTP API, for checking what postDeploy claims it did. */
+const apiUrl = () => connectUrl.replace('://connect.', '://api.');
+async function ct(method, path, body) {
+  const res = await fetch(`${apiUrl()}/${projectKey}${path}`, {
+    method,
+    headers: {
+      authorization: `Bearer ${await token()}`,
+      ...(body ? { 'content-type': 'application/json' } : {}),
+    },
+    ...(body ? { body: JSON.stringify(body) } : {}),
+  });
+  const text = await res.text();
+  const parsed = text ? JSON.parse(text) : null;
+  if (!res.ok) {
+    const err = new Error(`${method} ${path} -> HTTP ${res.status}`);
+    err.status = res.status;
+    err.body = parsed;
+    throw err;
+  }
+  return parsed;
+}
+const ctGet = (p) => ct('GET', p);
+const ctPost = (p, b) => ct('POST', p, b);
+const ctDelete = (p) => ct('DELETE', p);
+
 const commands = {
   status: cmdStatus,
+  ensure: cmdEnsure,
   register: cmdRegister,
   deploy: cmdDeploy,
   wire: cmdWire,

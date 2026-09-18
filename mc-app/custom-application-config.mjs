@@ -1,11 +1,39 @@
-import { PERMISSIONS } from './src/constants';
+/**
+ * No imports, deliberately.
+ *
+ * This file is evaluated by Node in the deployment container, where an
+ * import of a source module is a bet on that runtime's module resolution —
+ * a bet that pays locally and fails where it runs, and whose failure is a
+ * container that exits before writing anything the deployment log captures.
+ * The report then says only "Connector provisioning failed".
+ *
+ * So the permission keys are computed here rather than derived from appkit.
+ * `src/constants.js` keeps its own copy for the browser bundle, where the
+ * import is compiled and fine.
+ */
+
+// Entry point paths are globally unique across every Merchant Center Custom
+// Application, so a registration may have to use something other than the
+// obvious name — and the permission keys are derived from whatever it is.
+const entryPointUriPath = process.env.ENTRY_POINT_URI_PATH || 'abandoned-carts';
+
+// `specialized-abandoned-carts` → ViewSpecializedAbandonedCarts.
+const pascalCase = entryPointUriPath
+  .split('-')
+  .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+  .join('');
+
+const PERMISSIONS = {
+  View: `View${pascalCase}`,
+  Manage: `Manage${pascalCase}`,
+};
 
 /**
  * @type {import('@commercetools-frontend/application-config').ConfigOptionsForCustomApplication}
  */
 const config = {
   name: 'Abandoned Carts',
-  entryPointUriPath: '${env:ENTRY_POINT_URI_PATH}',
+  entryPointUriPath,
   cloudIdentifier: '${env:CLOUD_IDENTIFIER}',
   env: {
     development: {

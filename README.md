@@ -156,13 +156,6 @@ also scans the **whole repository**, not just the applications named in
 `connect.yaml` — a stray lockfile in a folder nothing deploys will fail the
 scan exactly like a real dependency.
 
-The entry point path is read from the environment rather than hardcoded.
-Merchant Center entry point paths are globally unique across every Custom
-Application, so a plain name may already be taken and the registration has
-to use something else — and the permission keys are derived from it, so a
-constant that disagrees produces an application that loads and then refuses
-every user.
-
 To exercise the mail-sender by hand, base64 a commercetools change message
 into the Pub/Sub envelope it receives:
 
@@ -170,3 +163,45 @@ into the Pub/Sub envelope it receives:
 curl -X POST http://localhost:8081/mailSender -H 'content-type: application/json' \
   -d "{\"message\":{\"data\":\"$(printf '%s' '{"notificationType":"ResourceCreated","resource":{"typeId":"key-value-document"},"resourceUserProvidedIdentifiers":{"containerAndKey":{"container":"abandoned-carts","key":"CART_ID"}}}' | base64)\"}}"
 ```
+
+## Registering and deploying
+
+`scripts/connect.mjs` drives it: `status`, `register`, `deploy`, `wire`,
+`ensure`, `logs`.
+
+## What the deployment report does not tell you
+
+Four failures here are silent, and each one costs a deploy cycle to find the
+hard way.
+
+**The entry point path is globally unique** across every Merchant Center
+Custom Application, so a registration may have to use something other than
+the obvious name — this one is `specialized-abandoned-carts`. The permission
+keys are derived from it, so anything that disagrees produces an application
+that loads and then refuses every user. It cannot be changed after
+registration. `custom-application-config.mjs` reads it from the environment;
+the browser bundle reads `window.app.entryPointUriPath`, because
+`mc-scripts` does **not** inline `process.env` into the bundle and a
+constant compiled from it would silently be the fallback.
+
+**Connect starts the Merchant Center application itself**, with
+`mc-scripts compile-html && serve ./public -p 8080 --config ../serve.json`.
+So both binaries run in the container and belong in `dependencies`;
+`../serve.json` resolves relative to the *served* directory, so it sits
+beside the application rather than at the repository root; and
+`compile-html` rejects a placeholder `CUSTOM_APPLICATION_ID`. Any of those
+crash-loops the container before it writes a line, and the report says only
+**"Connector provisioning failed"**. Running that exact command locally
+names the problem in one step, which is worth more than any number of
+plausible theories.
+
+**`custom-application-config.mjs` imports nothing.** Node evaluates it in
+the container, where importing a source module is a bet on that runtime's
+module resolution — and losing costs the same silent crash-loop. The
+permission keys are computed in the file.
+
+**`postDeploy` does not reliably run on a preview deployment**, and the
+report says "Post-deployment setup succeeded" either way: deployed,
+healthy, and deaf. `ensure` checks the Subscriptions and the Type against
+the Project and repoints them. A redeploy gets a new Pub/Sub topic, so a
+Subscription still aimed at the old one is exactly as silent as none.
