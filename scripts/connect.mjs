@@ -17,6 +17,8 @@
  *   RESEND_API_KEY                        optional; unset means render, don't send
  *   ABANDONED_CART_FROM                   optional
  *   ABANDONED_CART_DEMO_RECIPIENT         optional; one inbox for every email
+ *   ABANDONED_CART_MAX_PER_RUN            optional; carts one run may record
+ *   ABANDONED_CART_MARK_CARTS             optional; 'false' leaves carts alone
  *   CUSTOM_APPLICATION_ID                 from the Custom Application registration
  *   ENTRY_POINT_URI_PATH                  ditto, and globally unique
  *
@@ -136,6 +138,10 @@ function configurations({ serviceUrl, applicationUrl }) {
         {
           key: 'ABANDONED_CART_MAX_PER_RUN',
           value: env.ABANDONED_CART_MAX_PER_RUN ?? '10',
+        },
+        {
+          key: 'ABANDONED_CART_MARK_CARTS',
+          value: env.ABANDONED_CART_MARK_CARTS ?? 'true',
         },
       ],
     },
