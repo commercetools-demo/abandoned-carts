@@ -40,6 +40,21 @@ function maxPerRun(): number {
 }
 
 /**
+ * Whether to write the `abandoned` flag onto the cart.
+ *
+ * A Cart carries exactly one custom Type, so marking it replaces whatever
+ * Type it already had. In a Project where something else already puts a
+ * Type on carts — an API Extension, another connector — that is somebody
+ * else's data being overwritten, and it is worth being able to decline.
+ *
+ * Declining costs only the Cart Discount: `alreadyRecorded` is what keeps
+ * a cart from being recorded and emailed twice, not the flag.
+ */
+function shouldMarkCarts(): boolean {
+  return process.env.ABANDONED_CART_MARK_CARTS !== 'false';
+}
+
+/**
  * The address to write to.
  *
  * `customerEmail` is set by whatever created the cart, and a storefront that
@@ -85,7 +100,7 @@ async function alreadyRecorded(cartId: string): Promise<boolean> {
 }
 
 /**
- * Record one cart and mark it.
+ * Record one cart, and mark it if marking is enabled.
  *
  * The Custom Object is written first. The mail-sender reacts to that write,
  * so it is the point of no return: if marking the cart fails afterwards the
@@ -114,6 +129,8 @@ async function recordCart(cart: Cart, email: string): Promise<void> {
       },
     })
     .execute();
+
+  if (!shouldMarkCarts()) return;
 
   try {
     await createApiRoot()
@@ -193,7 +210,8 @@ export const processAbandonedCarts = async (): Promise<RunSummary> => {
 
     const cap = maxPerRun();
     logger.info(
-      `Abandoned after ${abandonAfterHours}h, ignored after ${ignoreCartsOlderThanDays}d, at most ${cap} per run.`
+      `Abandoned after ${abandonAfterHours}h, ignored after ${ignoreCartsOlderThanDays}d, ` +
+        `at most ${cap} per run, marking carts ${shouldMarkCarts() ? 'on' : 'off'}.`
     );
 
     const now = Date.now();
@@ -298,6 +316,7 @@ export const processAbandonedCarts = async (): Promise<RunSummary> => {
       skippedEmpty,
       skippedByCap,
       maxPerRun: cap,
+      markCarts: shouldMarkCarts(),
       processingDuration: endTime.getTime() - startTime.getTime(),
       configuration: { abandonAfterHours, ignoreCartsOlderThanDays },
       status: 'ok',
