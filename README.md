@@ -140,12 +140,21 @@ Everything fast enough to run before a deploy is behind one command:
 ./scripts/predeploy.sh
 ```
 
-Typecheck, lint, build and unit tests for all five applications. One at a
-time with `./scripts/predeploy.sh mc-app`.
+Audit, typecheck, lint, build and unit tests for all five applications. One
+at a time with `./scripts/predeploy.sh mc-app`.
 
-`mc-app` uses **yarn**, not npm — its `package.json` carries a `resolutions`
-block that only yarn honours, and npm cannot resolve the dependency tree at
-all.
+`npm audit --audit-level=high` runs first because Connect's SCA scan is what
+rejects a Connector, and its report names only the stage that failed. It
+also scans the **whole repository**, not just the applications named in
+`connect.yaml` — a stray lockfile in a folder nothing deploys will fail the
+scan exactly like a real dependency.
+
+The entry point path is read from the environment rather than hardcoded.
+Merchant Center entry point paths are globally unique across every Custom
+Application, so a plain name may already be taken and the registration has
+to use something else — and the permission keys are derived from it, so a
+constant that disagrees produces an application that loads and then refuses
+every user.
 
 To exercise the mail-sender by hand, base64 a commercetools change message
 into the Pub/Sub envelope it receives:
