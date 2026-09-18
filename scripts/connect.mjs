@@ -153,7 +153,12 @@ function configurations({ applicationUrl }) {
       securedConfiguration: mailSenderSecured,
     },
     { applicationName: 'order-created-event', standardConfiguration: [] },
-  ];
+    // DeploymentConfigurationApplication requires BOTH arrays, even empty.
+  ].map((c) => ({
+    applicationName: c.applicationName,
+    standardConfiguration: c.standardConfiguration ?? [],
+    securedConfiguration: c.securedConfiguration ?? [],
+  }));
 }
 
 /**
@@ -319,7 +324,11 @@ async function cmdWire() {
     actions: [
       {
         action: 'redeploy',
-        configurations: configurations({ applicationUrl }),
+        // `configurationValues`, not `configurations`. The draft uses one
+        // name and the redeploy action the other; sending the draft's name
+        // here is accepted and ignored, so the redeploy reports success and
+        // changes nothing.
+        configurationValues: configurations({ applicationUrl }),
         globalConfiguration: globalConfiguration({ serviceUrl }),
       },
     ],
