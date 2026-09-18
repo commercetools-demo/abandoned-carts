@@ -6,6 +6,12 @@
 #   ./scripts/predeploy.sh            all five applications
 #   ./scripts/predeploy.sh mc-app     one of them
 #
+# It runs what Connect runs, in Connect's order: install from the lockfile,
+# audit at high, typecheck, lint, build, tests. The audit is in here because
+# Connect's SCA scan rejected this connector for exactly that and the report
+# says only which stage failed — a five-minute round trip for a question
+# `npm audit` answers in two seconds.
+#
 # Not in here: anything needing a running server, real credentials, or
 # minutes rather than seconds. Those get their own deliberate command.
 
@@ -34,9 +40,9 @@ run() {
 }
 
 # npm ci rather than npm install: a lockfile that no longer matches
-# package.json builds fine locally and fails in Connect, which is the one
-# failure this gate exists to catch before a deploy rather than after.
-install_npm() {
+# package.json installs fine locally and fails in Connect, which is the kind
+# of failure this gate exists to catch before a deploy rather than after.
+install() {
   local dir=$1
   if [ -d "$dir/node_modules" ]; then return 0; fi
   ( cd "$dir" && npm ci --silent )
@@ -44,30 +50,26 @@ install_npm() {
 
 for app in "${APPS[@]}"; do
   banner "$app"
+  install "$ROOT/$app"
+  run "$app" audit sh -c "cd '$ROOT/$app' && npm audit --audit-level=high >/dev/null"
+
   case "$app" in
     service|job|order-created-event)
-      install_npm "$ROOT/$app"
       run "$app" typecheck sh -c "cd '$ROOT/$app' && npx tsc --noEmit"
       run "$app" lint      sh -c "cd '$ROOT/$app' && npm run --silent lint"
       run "$app" build     sh -c "cd '$ROOT/$app' && npm run --silent build"
-      if [ "$app" != "job" ] || [ -d "$ROOT/$app/src/tests" ]; then
-        run "$app" tests   sh -c "cd '$ROOT/$app' && npm test --silent -- --passWithNoTests"
+      if [ -d "$ROOT/$app/src/tests" ] || [ -d "$ROOT/$app/tests" ]; then
+        run "$app" tests   sh -c "cd '$ROOT/$app' && npm test --silent"
       fi
       ;;
     mail-sender)
-      install_npm "$ROOT/$app"
       run "$app" lint  sh -c "cd '$ROOT/$app' && npm run --silent lint"
       run "$app" tests sh -c "cd '$ROOT/$app' && npm run --silent test:unit"
       ;;
     mc-app)
-      # yarn, not npm: package.json carries a `resolutions` block that only
-      # yarn honours, and npm cannot resolve this dependency tree at all.
-      if [ ! -d "$ROOT/mc-app/node_modules" ]; then
-        ( cd "$ROOT/mc-app" && NPM_TOKEN="" yarn install --silent --frozen-lockfile )
-      fi
-      run mc-app lint  sh -c "cd '$ROOT/mc-app' && NPM_TOKEN='' npx jest --config jest.eslint.config.js --silent"
-      run mc-app tests sh -c "cd '$ROOT/mc-app' && NPM_TOKEN='' npx jest --config jest.test.config.js --silent"
-      run mc-app build sh -c "cd '$ROOT/mc-app' && NPM_TOKEN='' npx mc-scripts build >/dev/null"
+      run mc-app lint  sh -c "cd '$ROOT/mc-app' && npx eslint src custom-application-config.mjs"
+      run mc-app tests sh -c "cd '$ROOT/mc-app' && npx jest --config jest.test.config.js --silent"
+      run mc-app build sh -c "cd '$ROOT/mc-app' && npx mc-scripts build >/dev/null"
       ;;
     *)
       echo "Unknown application: $app" >&2

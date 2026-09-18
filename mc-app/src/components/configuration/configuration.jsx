@@ -1,4 +1,3 @@
-import PropTypes from 'prop-types';
 import React, { useState } from 'react';
 import { useIntl } from 'react-intl';
 import Constraints from '@commercetools-uikit/constraints';
@@ -37,11 +36,8 @@ const Configuration = () => {
   } = useDiscountsFetcher();
 
   // Fetch existing configuration
-  const {
-    configuration: existingConfiguration,
-    error: configError,
-    loading: configLoading,
-  } = useConfigurationFetcher();
+  const { configuration: existingConfiguration, loading: configLoading } =
+    useConfigurationFetcher();
 
   // Configuration updater
   const { loading: saveLoading, execute: saveConfiguration } =
