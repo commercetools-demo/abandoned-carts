@@ -2,14 +2,14 @@ import CustomError from '../errors/custom.error.js';
 import {
   HTTP_STATUS_BAD_REQUEST,
 } from '../constants/http-status.constants.js';
-import readConfiguration from '../utils/config.utils.js';
 
-export function isSelfCreatedChange(messageBody) {
-  const resourceModifiedBy = messageBody.createdBy?.clientId;
-  const currentConnectorClientId = readConfiguration().clientId;
-  return resourceModifiedBy === currentConnectorClientId;
-}
-
+/**
+ * Is this one of ours?
+ *
+ * The Subscription is a Change Subscription on `key-value-document`, which
+ * cannot be filtered by container, so every Custom Object write in the
+ * Project arrives here. This runs before anything is fetched.
+ */
 export function isAbandonedCartMessage(messageBody) {
   return (
     messageBody.notificationType === 'ResourceCreated' &&
@@ -19,10 +19,10 @@ export function isAbandonedCartMessage(messageBody) {
 }
 
 export function doValidation(request) {
-  if (!request.body) {
+  if (!request.body?.message?.data) {
     throw new CustomError(
       HTTP_STATUS_BAD_REQUEST,
-      'Bad request: No Pub/Sub message was received'
+      'Bad request: no Pub/Sub message data was received'
     );
   }
 }

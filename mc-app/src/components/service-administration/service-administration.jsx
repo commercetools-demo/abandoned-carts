@@ -8,7 +8,10 @@ import PrimaryButton from '@commercetools-uikit/primary-button';
 import SecondaryButton from '@commercetools-uikit/secondary-button';
 import { useServiceLogFetcher } from '../../hooks/use-service-log-connector';
 import { useConfigurationFetcher } from '../../hooks/use-configuration-connector';
-import { processAbandonedCarts, testAbandonedCartService } from '../../services/abandoned-cart-http-service';
+import {
+  processAbandonedCarts,
+  testAbandonedCartService,
+} from '../../services/abandoned-cart-http-service';
 import messages from './messages';
 
 const ServiceAdministration = () => {
@@ -17,17 +20,27 @@ const ServiceAdministration = () => {
   const [serviceMessage, setServiceMessage] = useState('');
 
   // Fetch service log data
-  const { serviceLog, error: serviceLogError, loading: serviceLogLoading, refetch: refetchServiceLog } = useServiceLogFetcher();
+  const {
+    serviceLog,
+    error: serviceLogError,
+    loading: serviceLogLoading,
+    refetch: refetchServiceLog,
+  } = useServiceLogFetcher();
 
   // Fetch configuration data
-  const { configuration, error: configurationError, loading: configurationLoading, refetch: refetchConfiguration } = useConfigurationFetcher();
+  const {
+    configuration,
+    error: configurationError,
+    loading: configurationLoading,
+    refetch: refetchConfiguration,
+  } = useConfigurationFetcher();
 
   // Parse configuration value if it exists
   const parsedConfiguration = React.useMemo(() => {
     if (configuration?.value) {
       try {
-        return typeof configuration.value === 'string' 
-          ? JSON.parse(configuration.value) 
+        return typeof configuration.value === 'string'
+          ? JSON.parse(configuration.value)
           : configuration.value;
       } catch (error) {
         console.error('Error parsing configuration value:', error);
@@ -41,14 +54,14 @@ const ServiceAdministration = () => {
     try {
       setServiceStatus('running');
       setServiceMessage('Testing service connection...');
-      
+
       // First test the service connection
       const testResult = await testAbandonedCartService();
-      
+
       if (!testResult.success) {
         setServiceStatus('error');
         setServiceMessage(testResult.message);
-        
+
         // Clear error message after 8 seconds
         setTimeout(() => {
           setServiceStatus(null);
@@ -56,23 +69,25 @@ const ServiceAdministration = () => {
         }, 8000);
         return;
       }
-      
-      setServiceMessage('Service connection successful, processing abandoned carts...');
-      
+
+      setServiceMessage(
+        'Service connection successful, processing abandoned carts...'
+      );
+
       // If test passes, run the full service
       const result = await processAbandonedCarts();
-      
+
       if (result.success) {
         setServiceStatus('success');
         setServiceMessage(result.message);
-        
+
         // Refetch service log data to get updated statistics
         try {
           await refetchServiceLog();
         } catch (refetchError) {
           console.warn('Failed to refetch service log data:', refetchError);
         }
-        
+
         // Clear success message after 5 seconds
         setTimeout(() => {
           setServiceStatus(null);
@@ -81,7 +96,7 @@ const ServiceAdministration = () => {
       } else {
         setServiceStatus('error');
         setServiceMessage(result.message);
-        
+
         // Clear error message after 8 seconds
         setTimeout(() => {
           setServiceStatus(null);
@@ -92,7 +107,7 @@ const ServiceAdministration = () => {
       setServiceStatus('error');
       setServiceMessage(`Failed to run service: ${error.message}`);
       console.error('Error running abandoned cart service:', error);
-      
+
       // Clear error message after 8 seconds
       setTimeout(() => {
         setServiceStatus(null);
@@ -111,11 +126,12 @@ const ServiceAdministration = () => {
         <Card>
           <Spacings.Stack scale="m">
             <Text.Subheadline as="h2" intlMessage={messages.statusTitle} />
-            
+
             {/* Service URL Display */}
             <Spacings.Stack scale="s">
               <Text.Detail tone="secondary">
-                <strong>Service URL:</strong> {window.ENV?.ABANDONED_CART_SERVICE_URL || 'http://localhost:8080'}
+                <strong>Service URL:</strong>{' '}
+                {window.ENV?.ABANDONED_CART_SERVICE_URL || 'not configured'}
               </Text.Detail>
             </Spacings.Stack>
 
@@ -145,10 +161,12 @@ const ServiceAdministration = () => {
                 </Spacings.Inline>
                 <Spacings.Inline scale="m">
                   <Text.Detail tone="secondary">
-                    • Abandon after: {parsedConfiguration.abandonAfterHours || 'N/A'} hours
+                    • Abandon after:{' '}
+                    {parsedConfiguration.abandonAfterHours || 'N/A'} hours
                   </Text.Detail>
                   <Text.Detail tone="secondary">
-                    • Ignore carts older than: {parsedConfiguration.ignoreCartsOlderThanDays || 'N/A'} days
+                    • Ignore carts older than:{' '}
+                    {parsedConfiguration.ignoreCartsOlderThan || 'N/A'} days
                   </Text.Detail>
                 </Spacings.Inline>
                 {parsedConfiguration.emailSubject && (
@@ -158,17 +176,21 @@ const ServiceAdministration = () => {
                 )}
                 {parsedConfiguration.emailTemplate && (
                   <Text.Detail tone="secondary">
-                    • Email Template: {parsedConfiguration.emailTemplate.substring(0, 100)}...
+                    • Email Template:{' '}
+                    {parsedConfiguration.emailTemplate.substring(0, 100)}...
                   </Text.Detail>
                 )}
               </Spacings.Stack>
             )}
-            {!configurationLoading && !configurationError && !parsedConfiguration && (
-              <Text.Detail tone="secondary">
-                No configuration found. Please configure the abandoned cart settings.
-              </Text.Detail>
-            )}
-            
+            {!configurationLoading &&
+              !configurationError &&
+              !parsedConfiguration && (
+                <Text.Detail tone="secondary">
+                  No configuration found. Please configure the abandoned cart
+                  settings.
+                </Text.Detail>
+              )}
+
             <Spacings.Inline scale="l" alignItems="center">
               <PrimaryButton
                 label={intl.formatMessage(messages.runNowButton)}
@@ -176,24 +198,18 @@ const ServiceAdministration = () => {
                 isDisabled={serviceStatus === 'running'}
               />
             </Spacings.Inline>
-            
+
             {/* Service Execution Status */}
             {serviceStatus && (
               <Spacings.Stack scale="s">
                 {serviceStatus === 'running' && (
-                  <Text.Detail tone="secondary">
-                    {serviceMessage}
-                  </Text.Detail>
+                  <Text.Detail tone="secondary">{serviceMessage}</Text.Detail>
                 )}
                 {serviceStatus === 'success' && (
-                  <Text.Detail tone="positive">
-                    {serviceMessage}
-                  </Text.Detail>
+                  <Text.Detail tone="positive">{serviceMessage}</Text.Detail>
                 )}
                 {serviceStatus === 'error' && (
-                  <Text.Detail tone="critical">
-                    {serviceMessage}
-                  </Text.Detail>
+                  <Text.Detail tone="critical">{serviceMessage}</Text.Detail>
                 )}
               </Spacings.Stack>
             )}
@@ -202,19 +218,49 @@ const ServiceAdministration = () => {
             {serviceLog?.value && (
               <Spacings.Stack scale="s">
                 <Text.Detail tone="secondary">
-                  <strong>Last Run:</strong> {new Date(serviceLog.value.lastRunTime).toLocaleString()}
+                  <strong>Last Run:</strong>{' '}
+                  {new Date(serviceLog.value.lastRunTime).toLocaleString()}
                 </Text.Detail>
                 <Spacings.Inline scale="m">
                   <Text.Detail tone="secondary">
                     • Carts Fetched: {serviceLog.value.cartsFetched || 0}
                   </Text.Detail>
                   <Text.Detail tone="secondary">
-                    • Abandoned Carts: {serviceLog.value.abandonedCartObjectsCreated || 0}
+                    • Abandoned Carts:{' '}
+                    {serviceLog.value.abandonedCartObjectsCreated || 0}
                   </Text.Detail>
                   <Text.Detail tone="secondary">
-                    • Processing Duration: {serviceLog.value.processingDuration ? `${Math.round(serviceLog.value.processingDuration / 1000)}s` : 'N/A'}
+                    • Processing Duration:{' '}
+                    {serviceLog.value.processingDuration
+                      ? `${Math.round(
+                          serviceLog.value.processingDuration / 1000
+                        )}s`
+                      : 'N/A'}
                   </Text.Detail>
                 </Spacings.Inline>
+                {(serviceLog.value.skippedByCap > 0 ||
+                  serviceLog.value.skippedNoEmail > 0 ||
+                  serviceLog.value.skippedEmpty > 0) && (
+                  <Spacings.Inline scale="m">
+                    {serviceLog.value.skippedEmpty > 0 && (
+                      <Text.Detail tone="secondary">
+                        • Empty carts skipped: {serviceLog.value.skippedEmpty}
+                      </Text.Detail>
+                    )}
+                    {serviceLog.value.skippedNoEmail > 0 && (
+                      <Text.Detail tone="secondary">
+                        • No reachable email: {serviceLog.value.skippedNoEmail}
+                      </Text.Detail>
+                    )}
+                    {serviceLog.value.skippedByCap > 0 && (
+                      <Text.Detail tone="warning">
+                        • Held for the next run by the cap of{' '}
+                        {serviceLog.value.maxPerRun}:{' '}
+                        {serviceLog.value.skippedByCap}
+                      </Text.Detail>
+                    )}
+                  </Spacings.Inline>
+                )}
                 {serviceLog.value.status === 'error' && (
                   <Text.Detail tone="critical">
                     Last run failed: {serviceLog.value.error}
@@ -222,7 +268,6 @@ const ServiceAdministration = () => {
                 )}
               </Spacings.Stack>
             )}
-
           </Spacings.Stack>
         </Card>
       </Spacings.Stack>

@@ -1,4 +1,7 @@
-import { useMcQuery, useMcMutation } from '@commercetools-frontend/application-shell';
+import {
+  useMcQuery,
+  useMcMutation,
+} from '@commercetools-frontend/application-shell';
 import { GRAPHQL_TARGETS } from '@commercetools-frontend/constants';
 import FetchServiceAdministrationQuery from './fetch-service-administration.ctp.graphql';
 import CreateServiceAdministrationMutation from './create-service-administration.ctp.graphql';
@@ -32,7 +35,7 @@ export const useServiceAdministrationUpdater = () => {
   const execute = async (serviceAdministrationData) => {
     try {
       const value = JSON.stringify(serviceAdministrationData);
-      
+
       // Use createOrUpdateCustomObject which handles both create and update
       return await createOrUpdateServiceAdministration({
         context: {

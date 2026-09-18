@@ -1,4 +1,7 @@
-import { useMcQuery, useMcMutation } from '@commercetools-frontend/application-shell';
+import {
+  useMcQuery,
+  useMcMutation,
+} from '@commercetools-frontend/application-shell';
 import { GRAPHQL_TARGETS } from '@commercetools-frontend/constants';
 import FetchConfigurationQuery from './fetch-configuration.ctp.graphql';
 import CreateConfigurationMutation from './create-configuration.ctp.graphql';
@@ -7,20 +10,25 @@ const CONTAINER = 'abandoned-cart';
 const KEY = 'configuration';
 
 export const useConfigurationFetcher = () => {
-  const { data, error, loading } = useMcQuery(FetchConfigurationQuery, {
-    variables: {
-      container: CONTAINER,
-      key: KEY,
-    },
-    context: {
-      target: GRAPHQL_TARGETS.COMMERCETOOLS_PLATFORM,
-    },
-  });
+  const { data, error, loading, refetch } = useMcQuery(
+    FetchConfigurationQuery,
+    {
+      variables: {
+        container: CONTAINER,
+        key: KEY,
+      },
+      context: {
+        target: GRAPHQL_TARGETS.COMMERCETOOLS_PLATFORM,
+      },
+      fetchPolicy: 'cache-and-network',
+    }
+  );
 
   return {
     configuration: data?.customObject,
     error,
     loading,
+    refetch,
   };
 };
 
@@ -32,7 +40,7 @@ export const useConfigurationUpdater = () => {
   const execute = async (configurationData) => {
     try {
       const value = JSON.stringify(configurationData);
-      
+
       // Use createOrUpdateCustomObject which handles both create and update
       return await createOrUpdateConfiguration({
         context: {

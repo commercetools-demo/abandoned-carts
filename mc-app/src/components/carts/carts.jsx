@@ -28,36 +28,41 @@ const Carts = () => {
   };
 
   // Transform cart data for the table
-  const cartRows = cartsPaginatedResult?.results?.map((cart) => {
-    const cartData = cart.value || {};
-    const abandonmentDate = cartData.abandonmentDate 
-      ? new Date(cartData.abandonmentDate)
-      : new Date(cart.createdAt);
-    
-    // Use real data from custom objects
-    const emailSentDate = cartData.emailSentDate 
-      ? new Date(cartData.emailSentDate)
-      : null;
-    
-    const cartConvertedDate = cartData.cartConvertedDate 
-      ? new Date(cartData.cartConvertedDate)
-      : null;
-    
-    return {
-      id: cart.id,
-      email: cartData.customerEmail || 'N/A',
-      total: cartData.cartTotal ? `$${cartData.cartTotal}` : 'N/A',
-      abandonmentDate: abandonmentDate.toLocaleDateString(),
-      emailSent: emailSentDate ? emailSentDate.toLocaleDateString() : 'Not sent',
-      cartConverted: cartConvertedDate ? cartConvertedDate.toLocaleDateString() : 'Not converted',
-      // Store the original Date objects for sorting
-      abandonmentDateObj: abandonmentDate,
-      emailSentDateObj: emailSentDate,
-      cartConvertedDateObj: cartConvertedDate,
-      // Store the original cart data for the modal
-      originalCart: cart,
-    };
-  }) || [];
+  const cartRows =
+    cartsPaginatedResult?.results?.map((cart) => {
+      const cartData = cart.value || {};
+      const abandonmentDate = cartData.abandonmentDate
+        ? new Date(cartData.abandonmentDate)
+        : new Date(cart.createdAt);
+
+      // Use real data from custom objects
+      const emailSentDate = cartData.emailSentDate
+        ? new Date(cartData.emailSentDate)
+        : null;
+
+      const cartConvertedDate = cartData.cartConvertedDate
+        ? new Date(cartData.cartConvertedDate)
+        : null;
+
+      return {
+        id: cart.id,
+        email: cartData.customerEmail || 'N/A',
+        total: cartData.cartTotal ? `$${cartData.cartTotal}` : 'N/A',
+        abandonmentDate: abandonmentDate.toLocaleDateString(),
+        emailSent: emailSentDate
+          ? emailSentDate.toLocaleDateString()
+          : 'Not sent',
+        cartConverted: cartConvertedDate
+          ? cartConvertedDate.toLocaleDateString()
+          : 'Not converted',
+        // Store the original Date objects for sorting
+        abandonmentDateObj: abandonmentDate,
+        emailSentDateObj: emailSentDate,
+        cartConvertedDateObj: cartConvertedDate,
+        // Store the original cart data for the modal
+        originalCart: cart,
+      };
+    }) || [];
 
   // Sort by abandonment date in descending order (most recent first)
   cartRows.sort((a, b) => {
@@ -107,7 +112,10 @@ const Carts = () => {
       <Constraints.Horizontal max={16}>
         <Spacings.Stack scale="xl">
           <Text.Headline as="h1" intlMessage={messages.title} />
-          <Text.Detail tone="critical" intlMessage={messages.errorLoadingCarts} />
+          <Text.Detail
+            tone="critical"
+            intlMessage={messages.errorLoadingCarts}
+          />
         </Spacings.Stack>
       </Constraints.Horizontal>
     );
@@ -147,47 +155,50 @@ const Carts = () => {
 
         {/* Popup overlay for displaying full JSON data */}
         {isModalOpen && selectedCart && (
-          <div style={{
-            position: 'fixed',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            backgroundColor: 'rgba(0, 0, 0, 0.5)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 1000,
-          }}>
-            <div style={{
-              backgroundColor: 'white',
-              padding: '24px',
-              borderRadius: '8px',
-              maxWidth: '80%',
-              maxHeight: '80%',
-              overflow: 'auto',
-              boxShadow: '0 4px 20px rgba(0, 0, 0, 0.3)',
-            }}>
+          <div
+            style={{
+              position: 'fixed',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              backgroundColor: 'rgba(0, 0, 0, 0.5)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              zIndex: 1000,
+            }}
+          >
+            <div
+              style={{
+                backgroundColor: 'white',
+                padding: '24px',
+                borderRadius: '8px',
+                maxWidth: '80%',
+                maxHeight: '80%',
+                overflow: 'auto',
+                boxShadow: '0 4px 20px rgba(0, 0, 0, 0.3)',
+              }}
+            >
               <Spacings.Stack scale="m">
                 <Text.Headline as="h3">Abandoned Cart Details</Text.Headline>
                 <Text.Detail tone="secondary">Full JSON Data</Text.Detail>
-                <pre style={{ 
-                  backgroundColor: '#f5f5f5', 
-                  padding: '16px', 
-                  borderRadius: '4px',
-                  overflow: 'auto',
-                  maxHeight: '400px',
-                  fontSize: '12px',
-                  fontFamily: 'monospace',
-                  border: '1px solid #e0e0e0',
-                }}>
+                <pre
+                  style={{
+                    backgroundColor: '#f5f5f5',
+                    padding: '16px',
+                    borderRadius: '4px',
+                    overflow: 'auto',
+                    maxHeight: '400px',
+                    fontSize: '12px',
+                    fontFamily: 'monospace',
+                    border: '1px solid #e0e0e0',
+                  }}
+                >
                   {JSON.stringify(selectedCart.originalCart, null, 2)}
                 </pre>
                 <Spacings.Inline scale="m">
-                  <PrimaryButton
-                    label="Close"
-                    onClick={handleCloseModal}
-                  />
+                  <PrimaryButton label="Close" onClick={handleCloseModal} />
                 </Spacings.Inline>
               </Spacings.Stack>
             </div>

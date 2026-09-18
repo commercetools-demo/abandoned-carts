@@ -1,0 +1,11 @@
+{
+  "name": "abandoned-carts",
+  "version": "1.1.0",
+  "private": true,
+  "description": "commercetools Connect connector that finds carts that have gone quiet, emails the shopper, and tracks whether they came back.",
+  "license": "MIT",
+  "scripts": {
+    "predeploy": "./scripts/predeploy.sh",
+    "test": "./scripts/predeploy.sh"
+  }
+}

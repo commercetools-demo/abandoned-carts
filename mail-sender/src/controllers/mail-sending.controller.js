@@ -9,40 +9,34 @@ import HandlerFactory from '../factory/handler.factory.js';
 import { HANDLER_TYPE_ABANDONED_CART } from '../constants/handler-type.constants.js';
 
 /**
- * Exposed event POST endpoint.
- * Receives the Pub/Sub message and works with it
+ * Receives the Pub/Sub message and sends the email.
  *
- * @typedef {import("express").Response} Response
- * @typedef {import("express").Request} Request
+ * The work happens before the acknowledgement, not after. Acknowledging
+ * first looks safer — it can never miss the 10-second window — but the
+ * platform is free to freeze the instance once a response has been sent, so
+ * the send that was supposed to follow may simply never run. Handling first
+ * is safe here because the handler is idempotent: a redelivery finds
+ * `emailSentDate` already set and stops.
  *
- * @param {Request} request The express request
- * @param {Response} response The express response
- * @returns
+ * Every path acknowledges. This Subscription sees every Custom Object write
+ * in the Project, so the common case is a message with nothing to do, and a
+ * message that cannot be handled will not become handleable by being
+ * delivered again for a week.
  */
 export const messageHandler = async (request, response) => {
-  // Send ACCEPTED acknowledgement to Subscription
-  response.status(HTTP_STATUS_SUCCESS_ACCEPTED).send();
-
   try {
-    // Check request body
     doValidation(request);
 
-    const encodedMessageBody = request.body.message.data;
-    const messageBody = decodeToJson(encodedMessageBody);
-    const handlerFactory = new HandlerFactory();
-    
+    const messageBody = decodeToJson(request.body.message.data);
+
     if (isAbandonedCartMessage(messageBody)) {
-      const handler = handlerFactory.getHandler(HANDLER_TYPE_ABANDONED_CART);
+      const handler = new HandlerFactory().getHandler(HANDLER_TYPE_ABANDONED_CART);
       await handler.process(messageBody);
-    } else {
-      logger.warn('Message is not an abandoned cart notification:', messageBody);
     }
   } catch (err) {
-    if (err.statusCode !== HTTP_STATUS_SUCCESS_ACCEPTED) {
-      logger.error('Error processing abandoned cart notification:', err.message);
-      logger.error('Error stack:', err.stack);
-    } else {
-      logger.info(err);
-    }
+    logger.error(`Error processing abandoned cart notification: ${err.message}`);
+    logger.error(err.stack);
   }
+
+  response.status(HTTP_STATUS_SUCCESS_ACCEPTED).send();
 };

@@ -1,8 +1,5 @@
 import readConfiguration from '../utils/config.utils.js';
 
-/**
- * Configure Middleware. Example only. Adapt on your own
- */
-export const httpMiddlewareOptions = {
+export const buildHttpMiddlewareOptions = () => ({
   host: `https://api.${readConfiguration().region}.commercetools.com`,
-};
+});

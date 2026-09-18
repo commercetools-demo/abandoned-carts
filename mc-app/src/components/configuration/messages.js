@@ -7,8 +7,7 @@ export default defineMessages({
   },
   subtitle: {
     id: 'Configuration.subtitle',
-    defaultMessage:
-      'Configure your abandoned cart settings and preferences.',
+    defaultMessage: 'Configure your abandoned cart settings and preferences.',
   },
   abandonAfterHoursLabel: {
     id: 'Configuration.abandonAfterHoursLabel',
