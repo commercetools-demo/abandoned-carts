@@ -108,7 +108,7 @@ const deployment = () =>
     (r) => r.results.find((d) => d.key === DEPLOYMENT_KEY) ?? null
   );
 
-function configurations({ serviceUrl, applicationUrl }) {
+function configurations({ applicationUrl }) {
   const mailSenderStandard = [];
   if (env.ABANDONED_CART_FROM)
     mailSenderStandard.push({ key: 'ABANDONED_CART_FROM', value: env.ABANDONED_CART_FROM });
@@ -152,16 +152,23 @@ function configurations({ serviceUrl, applicationUrl }) {
       securedConfiguration: mailSenderSecured,
     },
     { applicationName: 'order-created-event', standardConfiguration: [] },
-  ].map((c) => ({
-    ...c,
-    // Inherited keys are supplied per application; Connect matches them
-    // against `inheritAs.configuration` in connect.yaml.
+  ];
+}
+
+/**
+ * `inheritAs.configuration` is supplied once, not repeated per application.
+ *
+ * Repeating it is rejected — `DeploymentUnknownApplicationConfigurationKey`,
+ * naming the Merchant Center application, because that application's own
+ * configuration block does not declare the inherited keys.
+ */
+function globalConfiguration({ serviceUrl }) {
+  return {
     standardConfiguration: [
-      ...(c.standardConfiguration ?? []),
       { key: 'CTP_REGION', value: env.CTP_REGION ?? 'us-central1.gcp' },
       { key: 'ABANDONED_CART_SERVICE_URL', value: serviceUrl },
     ],
-  }));
+  };
 }
 
 /** Where Connect put each application, once it has told us. */
@@ -256,9 +263,9 @@ async function cmdDeploy() {
     connector: { key: KEY, version: d.version, staged: true },
     region: env.CONNECT_REGION ?? 'us-central1.gcp',
     configurations: configurations({
-      serviceUrl: 'http://localhost:8080',
       applicationUrl: env.APPLICATION_URL ?? 'https://placeholder.commercetools.app',
     }),
+    globalConfiguration: globalConfiguration({ serviceUrl: 'http://localhost:8080' }),
   });
   console.log(`deployment ${dep.id} ${dep.status} — this takes up to 15 minutes.`);
 }
@@ -284,7 +291,8 @@ async function cmdWire() {
     actions: [
       {
         action: 'redeploy',
-        configurations: configurations({ serviceUrl, applicationUrl }),
+        configurations: configurations({ applicationUrl }),
+        globalConfiguration: globalConfiguration({ serviceUrl }),
       },
     ],
   });
