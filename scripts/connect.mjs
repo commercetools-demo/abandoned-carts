@@ -172,11 +172,36 @@ function globalConfiguration({ serviceUrl }) {
   };
 }
 
-/** Where Connect put each application, once it has told us. */
+/**
+ * Where Connect put each application, once it has told us.
+ *
+ * `applications` is top-level on the Deployment, not under `details` —
+ * `details` carries only the build and its stage report.
+ */
+function applications(dep) {
+  return Object.fromEntries(
+    (dep?.applications ?? []).map((a) => [a.applicationName, a])
+  );
+}
+
 function urls(dep) {
-  const out = {};
-  for (const app of dep?.details?.applications ?? []) out[app.applicationName] = app.url;
-  return out;
+  return Object.fromEntries(
+    Object.entries(applications(dep))
+      .filter(([, a]) => a.url)
+      .map(([name, a]) => [name, a.url])
+  );
+}
+
+/**
+ * Connect reports a topic as a full resource path,
+ * `projects/{projectId}/topics/{name}`, while a commercetools Subscription
+ * wants the two halves separately. Handing it the whole path as `topic`
+ * creates a Subscription that points at nothing.
+ */
+function pubSubDestination(topicPath) {
+  const match = /^projects\/([^/]+)\/topics\/(.+)$/.exec(topicPath ?? '');
+  if (!match) return null;
+  return { type: 'GoogleCloudPubSub', projectId: match[1], topic: match[2] };
 }
 
 async function cmdStatus() {
@@ -194,7 +219,9 @@ async function cmdStatus() {
 
   const dep = await deployment();
   console.log(dep ? `deployment ${dep.status}` : 'deployment absent');
-  for (const [name, url] of Object.entries(urls(dep))) console.log(`  ${name.padEnd(22)} ${url}`);
+  for (const [name, app] of Object.entries(applications(dep))) {
+    console.log(`  ${name.padEnd(22)} ${app.url ?? app.topic ?? ''}`);
+  }
   for (const e of dep?.details?.report?.entries ?? []) {
     console.log(`  ${e.type === 'Error' ? '✗' : '·'} ${e.title} ${e.message ?? ''}`);
   }
@@ -325,15 +352,16 @@ async function cmdEnsure() {
     process.exit(1);
   }
 
-  const apps = Object.fromEntries(
-    (dep.details?.applications ?? []).map((a) => [a.applicationName, a])
-  );
+  const apps = applications(dep);
 
   const wanted = [
     {
       app: 'mail-sender',
       key: 'abandoned-cart-created-subscription',
-      body: (destination) => ({ destination, changes: [{ resourceTypeId: 'key-value-document' }] }),
+      body: (destination) => ({
+        destination,
+        changes: [{ resourceTypeId: 'key-value-document' }],
+      }),
     },
     {
       app: 'order-created-event',
@@ -346,13 +374,12 @@ async function cmdEnsure() {
   ];
 
   for (const { app, key, body } of wanted) {
-    const topic = apps[app]?.topic;
-    const gcpProject = apps[app]?.topicProjectId ?? apps[app]?.projectId;
-    if (!topic) {
+    const destination = pubSubDestination(apps[app]?.topic);
+    if (!destination) {
       console.log(`${key}: Connect has not reported a topic for ${app} yet — skipped`);
       continue;
     }
-    const destination = { type: 'GoogleCloudPubSub', topic, projectId: gcpProject };
+    const topic = destination.topic;
     const existing = await ctGet(`/subscriptions?where=${encodeURIComponent(`key = "${key}"`)}`);
     const current = existing.results[0];
 
