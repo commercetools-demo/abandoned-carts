@@ -1,6 +1,7 @@
 import CustomError from '../errors/custom.error.js';
 import { HTTP_STATUS_SERVER_ERROR } from '../constants/http-status.constants.js';
 import { logger } from '../utils/logger.utils.js';
+import { htmlToPlainText } from '../email-template.js';
 
 const RESEND_ENDPOINT = 'https://api.resend.com/emails';
 const DEFAULT_FROM = 'Abandoned Carts <onboarding@resend.dev>';
@@ -41,7 +42,11 @@ class GenericHandler {
     const to = redirect ?? recipientEmailAddress;
     const from = fromAddress();
 
-    const { html, text } = this.renderBody(templateData, recipientEmailAddress, redirect);
+    const { html, text } = this.renderBody(
+      templateData,
+      recipientEmailAddress,
+      redirect
+    );
 
     const apiKey = process.env.RESEND_API_KEY;
     if (!apiKey) {
@@ -117,13 +122,11 @@ class GenericHandler {
       html += `<hr /><p style="color:#666;font-size:12px">[Demo mode] Addressed to ${addressedTo}; delivered here instead.</p>`;
     }
 
-    const text = html
-      .replace(/<br\s*\/?>/gi, '\n')
-      .replace(/<\/p>/gi, '\n\n')
-      .replace(/<[^>]*>/g, '')
-      .trim();
-
-    return { html, text };
+    // The contract's own converter, so the plain-text part a client without
+    // HTML shows is derived from the same rules the preview and the
+    // validator use — list items keep their bullet, entities come back as
+    // characters, and a stripped tag does not glue two words together.
+    return { html, text: htmlToPlainText(html) };
   }
 
   generateHtmlFromTemplateData(templateData) {
@@ -137,7 +140,9 @@ class GenericHandler {
       );
     }
     if (templateData.cartLineItems) {
-      rows.push(`<p><strong>Items in cart:</strong> ${templateData.cartLineItems}</p>`);
+      rows.push(
+        `<p><strong>Items in cart:</strong> ${templateData.cartLineItems}</p>`
+      );
     }
     if (templateData.abandonmentDate) {
       const date = new Date(templateData.abandonmentDate).toLocaleDateString();

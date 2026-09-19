@@ -1,12 +1,10 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useIntl } from 'react-intl';
 import Constraints from '@commercetools-uikit/constraints';
 import Spacings from '@commercetools-uikit/spacings';
 import Text from '@commercetools-uikit/text';
-import TextInput from '@commercetools-uikit/text-input';
 import NumberInput from '@commercetools-uikit/number-input';
 import SelectInput from '@commercetools-uikit/select-input';
-import RichTextInput from '@commercetools-uikit/rich-text-input';
 import PrimaryButton from '@commercetools-uikit/primary-button';
 import SecondaryButton from '@commercetools-uikit/secondary-button';
 import { useDiscountsFetcher } from '../../hooks/use-discounts-connector';
@@ -14,6 +12,14 @@ import {
   useConfigurationFetcher,
   useConfigurationUpdater,
 } from '../../hooks/use-configuration-connector';
+import RichEmailEditor from '../rich-email-editor';
+import {
+  DEFAULT_TEMPLATE,
+  exampleVars,
+  renderHtmlTemplate,
+  renderTextTemplate,
+  validateTemplate,
+} from '../../email-template';
 import messages from './messages';
 
 const Configuration = () => {
@@ -21,12 +27,19 @@ const Configuration = () => {
   const [formData, setFormData] = useState({
     abandonAfterHours: '',
     ignoreCartsOlderThan: '',
+    // A Project with no configuration yet starts from the shipped template
+    // rather than from nothing. An empty subject and body are both save
+    // errors, so an empty start would present a form that cannot be
+    // submitted until the merchandiser guesses what is missing.
     discount: '',
-    emailSubject: '',
-    emailTemplate: '<p></p>', // RichTextInput expects HTML content
+    emailSubject: DEFAULT_TEMPLATE.subject,
+    emailTemplate: DEFAULT_TEMPLATE.body,
   });
   const [saveStatus, setSaveStatus] = useState(null); // 'success', 'error', or null
-  const [richTextKey, setRichTextKey] = useState(0); // Key to force RichTextInput re-render
+  // Bumping this remounts both editors. Slate holds its own document after
+  // mount, so handing it a new `value` prop does nothing — the fetched
+  // configuration would never appear.
+  const [editorKey, setEditorKey] = useState(0);
 
   // Fetch discounts from CommerceTools
   const {
@@ -81,20 +94,53 @@ const Configuration = () => {
     if (existingConfiguration?.value) {
       // The value is already parsed as an object by Apollo Client
       const configData = existingConfiguration.value;
-      let emailTemplateValue = configData.emailTemplate || '<p></p>';
       setFormData({
         abandonAfterHours: configData.abandonAfterHours || '',
         ignoreCartsOlderThan: configData.ignoreCartsOlderThan || '',
         discount: configData.discount || '',
-        emailSubject: configData.emailSubject || '',
-        emailTemplate: emailTemplateValue, // Default to empty paragraph for RichTextInput
+        emailSubject: configData.emailSubject || DEFAULT_TEMPLATE.subject,
+        emailTemplate: configData.emailTemplate || DEFAULT_TEMPLATE.body,
       });
-      // Force RichTextInput to re-render with new data
-      setRichTextKey((prev) => prev + 1);
+      setEditorKey((prev) => prev + 1);
     }
   }, [existingConfiguration]);
 
+  /**
+   * What is wrong with the email, worst first.
+   *
+   * Errors block saving. The editor cannot produce most of them — a chip is
+   * indivisible — but a template can also arrive from a Project that
+   * predates the editor, or be written straight into the Custom Object, and
+   * this screen is the last place anyone looks before a shopper does.
+   */
+  const problems = useMemo(
+    () =>
+      validateTemplate({
+        subject: formData.emailSubject,
+        body: formData.emailTemplate,
+      }),
+    [formData.emailSubject, formData.emailTemplate]
+  );
+  const errors = problems.filter((p) => p.severity === 'error');
+  const warnings = problems.filter((p) => p.severity === 'warning');
+
+  /**
+   * The email as it will arrive, rendered by the code that sends it.
+   *
+   * `renderHtmlTemplate` is the mail-sender's own function, so a preview
+   * that looks right is evidence rather than a mock-up. Example values come
+   * from the same variable list the drop-down is built from.
+   */
+  const preview = useMemo(() => {
+    const vars = exampleVars();
+    return {
+      subject: renderTextTemplate(formData.emailSubject, vars),
+      html: renderHtmlTemplate(formData.emailTemplate, vars),
+    };
+  }, [formData.emailSubject, formData.emailTemplate]);
+
   const handleSave = async () => {
+    if (errors.length > 0) return;
     try {
       setSaveStatus(null); // Clear any previous status
       await saveConfiguration(formData);
@@ -119,10 +165,10 @@ const Configuration = () => {
       abandonAfterHours: configData.abandonAfterHours || '',
       ignoreCartsOlderThan: configData.ignoreCartsOlderThan || '',
       discount: configData.discount || '',
-      emailSubject: configData.emailSubject || '',
-      emailTemplate: configData.emailTemplate || '<p></p>',
+      emailSubject: configData.emailSubject || DEFAULT_TEMPLATE.subject,
+      emailTemplate: configData.emailTemplate || DEFAULT_TEMPLATE.body,
     });
-    setRichTextKey((prev) => prev + 1);
+    setEditorKey((prev) => prev + 1);
     setSaveStatus(null);
   };
 
@@ -210,29 +256,66 @@ const Configuration = () => {
           {/* Email Subject Field */}
           <Spacings.Stack scale="s">
             <Text.Body as="label" intlMessage={messages.emailSubjectLabel} />
-            <TextInput
+            <RichEmailEditor
+              key={`subject-${editorKey}`}
+              mode="text"
               value={formData.emailSubject}
-              onChange={(event) =>
-                handleInputChange('emailSubject', event.target.value)
-              }
-              placeholder={intl.formatMessage(messages.emailSubjectPlaceholder)}
+              onChange={(text) => handleInputChange('emailSubject', text)}
             />
           </Spacings.Stack>
 
           {/* Email Template Field */}
           <Spacings.Stack scale="s">
             <Text.Body as="label" intlMessage={messages.emailTemplateLabel} />
-            <RichTextInput
-              key={richTextKey} // Force re-render when data changes
+            <RichEmailEditor
+              key={`body-${editorKey}`}
               value={formData.emailTemplate}
-              onChange={(event) =>
-                handleInputChange('emailTemplate', event.target.value)
-              }
-              placeholder={intl.formatMessage(
-                messages.emailTemplatePlaceholder
-              )}
-              horizontalConstraint="scale"
-              defaultExpandMultilineText={true}
+              onChange={(html) => handleInputChange('emailTemplate', html)}
+            />
+            <Text.Detail tone="secondary">
+              {intl.formatMessage(messages.variableHint)}
+            </Text.Detail>
+          </Spacings.Stack>
+
+          {/* What would stop this being sent */}
+          {problems.length > 0 && (
+            <Spacings.Stack scale="xs">
+              {errors.map((problem) => (
+                <Text.Detail key={problem.message} tone="critical">
+                  {problem.message}
+                </Text.Detail>
+              ))}
+              {warnings.map((problem) => (
+                <Text.Detail key={problem.message} tone="warning">
+                  {problem.message}
+                </Text.Detail>
+              ))}
+            </Spacings.Stack>
+          )}
+
+          {/* The email as it will arrive */}
+          <Spacings.Stack scale="s">
+            <Text.Body as="label" intlMessage={messages.previewLabel} />
+            <Text.Detail tone="secondary">
+              {intl.formatMessage(messages.previewHint)}
+            </Text.Detail>
+            <Text.Detail isBold>{preview.subject}</Text.Detail>
+            <iframe
+              // Keyed on the content: an iframe written with srcDoc does not
+              // reload when the attribute changes, so without this the
+              // preview keeps showing the first render while the subject
+              // above it updates — which reads as a rendering bug.
+              key={preview.html}
+              title={intl.formatMessage(messages.previewLabel)}
+              srcDoc={preview.html}
+              sandbox=""
+              style={{
+                width: '100%',
+                height: 320,
+                border: '1px solid #e3e3e8',
+                borderRadius: 4,
+                background: '#fff',
+              }}
             />
           </Spacings.Stack>
 
@@ -257,7 +340,7 @@ const Configuration = () => {
             <PrimaryButton
               label={intl.formatMessage(messages.saveButton)}
               onClick={handleSave}
-              isDisabled={saveLoading || configLoading}
+              isDisabled={saveLoading || configLoading || errors.length > 0}
             />
             <SecondaryButton
               label={intl.formatMessage(messages.cancelButton)}

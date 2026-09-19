@@ -49,6 +49,20 @@ export default defineMessages({
     id: 'Configuration.emailTemplatePlaceholder',
     defaultMessage: 'Enter your email template here...',
   },
+  variableHint: {
+    id: 'Configuration.variableHint',
+    defaultMessage:
+      'Variables are inserted from the toolbar and behave as one character — backspace removes the whole chip, and there is no way to type inside one.',
+  },
+  previewLabel: {
+    id: 'Configuration.previewLabel',
+    defaultMessage: 'Preview',
+  },
+  previewHint: {
+    id: 'Configuration.previewHint',
+    defaultMessage:
+      'Rendered by the same code that sends it, with example values in place of a real cart.',
+  },
   saveButton: {
     id: 'Configuration.saveButton',
     defaultMessage: 'Save Configuration',

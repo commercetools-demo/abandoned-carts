@@ -80,8 +80,23 @@ system of record — there is no database.
   real while making it impossible to reach anyone who did not ask.
 - Without `RESEND_API_KEY` the connector still runs end to end: the message is
   rendered and recorded, and nothing is sent.
-- `[firstName]` in the merchandiser's template is substituted from the customer
-  record. With no template stored, a plain summary is generated from the cart
+- The merchandiser's subject and body are filled from
+  `mail-sender/src/email-template.js`, which defines every placeholder that
+  exists: `firstName`, `lastName`, `cartTotal`, `currency`, `itemCount` and
+  `abandonedOn`. Values are escaped, so a customer name containing markup
+  reaches the reader as characters; a name the sender cannot fill is left
+  standing rather than blanked, so a typo is visible instead of leaving a gap
+  in a sentence.
+- The file is copied verbatim into `mc-app/src/email-template.js`, and the
+  Merchant Center previews with the same functions that send. A drift between
+  the two would offer a placeholder the sender cannot fill — silent until a
+  shopper reads `{{cartTotal}}` — so `contract-copies.spec.js` compares them.
+- `[firstName]`, the syntax before that contract, is still read: the sender
+  rewrites it and the editor parses it into a chip that saves as
+  `{{firstName}}`. Opening an old template and saving it is the whole
+  migration.
+- With no template stored, the shipped default is used; with no cart data to
+  fill it, a plain summary is generated instead
   (`generateHtmlFromTemplateData`).
 - The attempt is recorded on the Custom Object either way —
   `emailAttemptedDate`, `emailDeliveredTo`, `emailDeliveryDetail`, the subject and
@@ -107,10 +122,23 @@ system of record — there is no database.
 
 - Three screens — Configuration, Abandoned Carts, Service Administration
   (`mc-app/src/routes.jsx`).
-- **Configuration** sets the two boundaries, the email subject and a rich-text body,
-  and offers the Project's cart discounts whose predicate contains
+- **Configuration** sets the two boundaries, the email subject and body, and
+  offers the Project's cart discounts whose predicate contains
   `custom.abandoned = true`. The abandonment window accepts quarter-hours, so the
   behaviour can be shown without waiting for one.
+- Subject and body are both edited in `rich-email-editor`, where a placeholder
+  is a Slate **inline void node** — one indivisible chip. Backspace removes the
+  whole thing and there is no way to type inside one, so `{{firstName}}` cannot
+  become `{{firstName}`, which would never be substituted and would be mailed
+  exactly as written. Chips are inserted from a drop-down built from the
+  contract's own variable list, so nothing offered can be unfillable.
+- A template that is empty, carries a broken placeholder, or names a variable
+  the sender does not know **blocks Save** and says which. The editor cannot
+  produce most of those, but a Project that predates it can, and this screen is
+  the last place anyone looks before a shopper does.
+- A live preview renders the email with `renderHtmlTemplate` — the sender's own
+  function — against example values from the same variable list, so a preview
+  that looks right is evidence rather than a mock-up.
 - **Abandoned Carts** is a sortable table over the `abandoned-carts` container —
   email, total, abandonment date, email-sent date, converted date — with a row click
   that opens the underlying Custom Object as JSON.

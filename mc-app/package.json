@@ -15,7 +15,7 @@
     "lint": "eslint src custom-application-config.mjs",
     "format": "prettier --write '**/*.js'",
     "typecheck": "tsc --noEmit",
-    "verify": "yarn install --frozen-lockfile && yarn audit --level high --groups dependencies && yarn lint && yarn test && yarn build",
+    "verify": "npm ci && npm audit --audit-level=high && npm run lint && npm test && npm run build",
     "start:dev": "mc-scripts start"
   },
   "dependencies": {
@@ -46,7 +46,6 @@
     "@commercetools-uikit/number-input": "^20.4.0",
     "@commercetools-uikit/pagination": "^20.4.0",
     "@commercetools-uikit/primary-button": "^20.4.0",
-    "@commercetools-uikit/rich-text-input": "^20.4.0",
     "@commercetools-uikit/secondary-button": "^20.4.0",
     "@commercetools-uikit/select-field": "^20.4.0",
     "@commercetools-uikit/spacings": "^20.4.0",
@@ -64,7 +63,10 @@
     "react-redux": "9.2.0",
     "react-router-dom": "5.3.4",
     "redux": "5.0.1",
-    "serve": "^14.2.6"
+    "serve": "^14.2.6",
+    "slate": "^0.123.0",
+    "slate-history": "^0.115.0",
+    "slate-react": "^0.123.0"
   },
   "resolutions": {
     "@emotion/react": "^11.14.0",
