@@ -8,9 +8,13 @@ import GenericHandler from '../handlers/generic.handler.js';
 import { logger } from '../utils/logger.utils.js';
 import CustomError from '../errors/custom.error.js';
 import { HTTP_STATUS_BAD_REQUEST } from '../constants/http-status.constants.js';
-
-const CONFIG_CONTAINER = 'abandoned-cart';
-const DEFAULT_SUBJECT = 'You left something in your cart';
+import {
+  CONFIG_CONTAINER,
+  DEFAULT_TEMPLATE,
+  renderHtmlTemplate,
+  renderTextTemplate,
+  templateVarsFor,
+} from '../email-template.js';
 
 class AbandonedCartHandler extends GenericHandler {
   constructor() {
@@ -20,7 +24,8 @@ class AbandonedCartHandler extends GenericHandler {
   async process(messageBody) {
     const container =
       messageBody.resourceUserProvidedIdentifiers?.containerAndKey?.container;
-    const key = messageBody.resourceUserProvidedIdentifiers?.containerAndKey?.key;
+    const key =
+      messageBody.resourceUserProvidedIdentifiers?.containerAndKey?.key;
 
     if (!container || !key) {
       throw new CustomError(
@@ -31,7 +36,10 @@ class AbandonedCartHandler extends GenericHandler {
 
     logger.info(`Processing abandoned cart ${container}/${key}`);
 
-    const abandonedCartObject = await getCustomObjectByContainerAndKey(container, key);
+    const abandonedCartObject = await getCustomObjectByContainerAndKey(
+      container,
+      key
+    );
     if (!abandonedCartObject) {
       throw new CustomError(
         HTTP_STATUS_BAD_REQUEST,
@@ -44,18 +52,26 @@ class AbandonedCartHandler extends GenericHandler {
     // Already sent. The Subscription delivers at least once, so a redelivery
     // of the creation message must not mail the same shopper twice.
     if (abandonedCartData.emailSentDate) {
-      logger.info(`Cart ${key} was already emailed on ${abandonedCartData.emailSentDate}.`);
+      logger.info(
+        `Cart ${key} was already emailed on ${abandonedCartData.emailSentDate}.`
+      );
       return;
     }
 
     const cartId = abandonedCartData.cartId;
     if (!cartId) {
-      throw new CustomError(HTTP_STATUS_BAD_REQUEST, 'The custom object has no cartId');
+      throw new CustomError(
+        HTTP_STATUS_BAD_REQUEST,
+        'The custom object has no cartId'
+      );
     }
 
     const cart = await getCartById(cartId);
     if (!cart) {
-      throw new CustomError(HTTP_STATUS_BAD_REQUEST, `Cannot read cart ${cartId}`);
+      throw new CustomError(
+        HTTP_STATUS_BAD_REQUEST,
+        `Cannot read cart ${cartId}`
+      );
     }
 
     // The service resolved the address already — through the customer record
@@ -75,7 +91,9 @@ class AbandonedCartHandler extends GenericHandler {
     let customer = null;
     if (cart.customerId) {
       customer = await getCustomerById(cart.customerId).catch((error) => {
-        logger.warn(`Could not read customer ${cart.customerId}: ${error.message}`);
+        logger.warn(
+          `Could not read customer ${cart.customerId}: ${error.message}`
+        );
         return null;
       });
     }
@@ -85,15 +103,34 @@ class AbandonedCartHandler extends GenericHandler {
       'configuration'
     );
     const configData = configuration?.value ?? {};
-    const subject = configData.emailSubject || DEFAULT_SUBJECT;
 
-    let emailTemplate = configData.emailTemplate;
-    if (emailTemplate) {
-      emailTemplate = emailTemplate.replace(
-        /\[firstName\]/g,
-        customer?.firstName ?? 'there'
-      );
-    }
+    /**
+     * Fill the placeholders — every one the contract defines, not just the
+     * name.
+     *
+     * `templateVarsFor` and the two renderers are the same functions the
+     * Merchant Center application previews with, which is what makes the
+     * preview evidence rather than a mock-up. They also understand the
+     * pre-contract `[firstName]`, so a template saved before the editor
+     * existed still personalises correctly.
+     */
+    const vars = templateVarsFor({
+      firstName: customer?.firstName,
+      lastName: customer?.lastName,
+      cartTotal: abandonedCartData.cartTotal,
+      currencyCode: abandonedCartData.currencyCode,
+      itemCount: cart.lineItems?.length ?? abandonedCartData.lineItemCount ?? 0,
+      abandonmentDate: abandonedCartData.abandonmentDate,
+    });
+
+    const subject = renderTextTemplate(
+      configData.emailSubject || DEFAULT_TEMPLATE.subject,
+      vars
+    );
+    const emailTemplate = renderHtmlTemplate(
+      configData.emailTemplate || DEFAULT_TEMPLATE.body,
+      vars
+    );
 
     const result = await this.sendMail(recipient, subject, {
       emailTemplate,
@@ -101,7 +138,8 @@ class AbandonedCartHandler extends GenericHandler {
       cartTotal: abandonedCartData.cartTotal,
       currencyCode: abandonedCartData.currencyCode,
       abandonmentDate: abandonedCartData.abandonmentDate,
-      cartLineItems: cart.lineItems?.length ?? abandonedCartData.lineItemCount ?? 0,
+      cartLineItems:
+        cart.lineItems?.length ?? abandonedCartData.lineItemCount ?? 0,
     });
 
     // The attempt is recorded either way. `emailSentDate` is set only on a
@@ -110,7 +148,9 @@ class AbandonedCartHandler extends GenericHandler {
     try {
       await updateCustomObject(container, key, abandonedCartObject.version, {
         ...abandonedCartData,
-        ...(result.delivered ? { emailSentDate: new Date().toISOString() } : {}),
+        ...(result.delivered
+          ? { emailSentDate: new Date().toISOString() }
+          : {}),
         emailAttemptedDate: new Date().toISOString(),
         emailDeliveredTo: result.deliveredTo,
         emailDeliveryDetail: result.detail,
@@ -118,7 +158,9 @@ class AbandonedCartHandler extends GenericHandler {
         emailBody: result.html,
       });
     } catch (error) {
-      logger.error(`Could not record the send on ${container}/${key}: ${error.message}`);
+      logger.error(
+        `Could not record the send on ${container}/${key}: ${error.message}`
+      );
     }
   }
 }
