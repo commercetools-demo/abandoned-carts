@@ -7,11 +7,23 @@
  *   node scripts/connect.mjs deploy
  *   node scripts/connect.mjs wire          # second pass: the assigned URLs
  *   node scripts/connect.mjs wire --update-connector   # and the newest tag
+ *   node scripts/connect.mjs wire --dry-run            # show, send nothing
  *   node scripts/connect.mjs ensure        # prove postDeploy actually ran
  *   node scripts/connect.mjs logs
  *
  * Every step is idempotent, so a rerun after a failure picks up where it
  * stopped rather than starting over.
+ *
+ * A redeploy REPLACES a deployment's configuration rather than merging into
+ * it, so `wire` reads what is already running and keeps it. Setting a variable
+ * below is how you ask for a change; leaving it unset is how you ask for none.
+ * The defaults apply to a deployment that has no value yet, never to one that
+ * does — otherwise a bare `wire`, run to pick up a new tag, would also reset
+ * the Type key, the per-run cap and the Custom Application id.
+ *
+ * Secured values are the exception: Connect masks them on read, so they cannot
+ * be carried across. `wire` refuses rather than overwriting a working secret
+ * with a row of asterisks. Export it, or pass `--drop-secured` to clear it.
  *
  * Credentials come from the environment and are never written here:
  *
@@ -111,60 +123,150 @@ const deployment = () =>
     (r) => r.results.find((d) => d.key === DEPLOYMENT_KEY) ?? null
   );
 
-function configurations({ applicationUrl }) {
-  const mailSenderStandard = [];
-  if (env.ABANDONED_CART_FROM)
-    mailSenderStandard.push({ key: 'ABANDONED_CART_FROM', value: env.ABANDONED_CART_FROM });
-  if (env.ABANDONED_CART_DEMO_RECIPIENT)
-    mailSenderStandard.push({
-      key: 'ABANDONED_CART_DEMO_RECIPIENT',
-      value: env.ABANDONED_CART_DEMO_RECIPIENT,
+/**
+ * Every value a deployment carries, and where each one comes from.
+ *
+ * `derived` values are computed from the deployment itself — they are the
+ * whole reason `wire` runs a second time — so they are always recomputed.
+ * Everything else is resolved by `resolve()` below.
+ */
+const CONFIG = [
+  { app: 'mc-app', key: 'CUSTOM_APPLICATION_ID', required: true },
+  { app: 'mc-app', key: 'CLOUD_IDENTIFIER', fallback: 'gcp-us' },
+  { app: 'mc-app', key: 'ENTRY_POINT_URI_PATH', fallback: 'abandoned-carts' },
+  { app: 'mc-app', key: 'APPLICATION_URL', derived: 'applicationUrl' },
+  { app: 'service', key: 'ABANDONED_CART_MAX_PER_RUN', fallback: '10' },
+  { app: 'service', key: 'ABANDONED_CART_MARK_CARTS', fallback: 'true' },
+  { app: 'service', key: 'ABANDONED_CART_TYPE_KEY', fallback: 'abandoned-cart-custom' },
+  { app: 'job' },
+  { app: 'mail-sender', key: 'ABANDONED_CART_FROM' },
+  { app: 'mail-sender', key: 'ABANDONED_CART_DEMO_RECIPIENT' },
+  { app: 'mail-sender', key: 'RESEND_API_KEY', secured: true },
+  { app: 'order-created-event' },
+];
+
+/** The application order Connect expects, taken from CONFIG itself. */
+const APPLICATIONS = [...new Set(CONFIG.map((c) => c.app))];
+
+/**
+ * What the deployment is already running.
+ *
+ * A redeploy REPLACES the configuration rather than merging into it, so a
+ * value this script does not send is a value the deployment loses. Reading
+ * the running configuration first is what makes a rerun safe: `wire` exists
+ * to update two URLs, and it should not quietly reset the type key, the
+ * per-run cap or the Custom Application id back to their defaults on the way
+ * past.
+ */
+function storedConfiguration(dep) {
+  const stored = {};
+  for (const a of dep?.applications ?? []) {
+    stored[a.applicationName] = {
+      standard: new Map((a.standardConfiguration ?? []).map((c) => [c.key, c.value])),
+      secured: new Set((a.securedConfiguration ?? []).map((c) => c.key)),
+    };
+  }
+  return stored;
+}
+
+/**
+ * Connect returns a secured value masked — `RESEND_API_KEY` reads back as a
+ * row of asterisks. Sending that back writes the asterisks as the secret,
+ * and nothing complains: the connector deploys, runs, and every Resend call
+ * 401s in a log nobody reads.
+ */
+const isMasked = (value) => typeof value === 'string' && /^\*+$/.test(value);
+
+/**
+ * Resolve one value: what you asked for, else what is already running, else
+ * the declared fallback.
+ *
+ * Environment first, because setting a variable is how you ask for a change.
+ * The deployment second, because not setting one is how you ask for no
+ * change — which is the case a bare rerun is.
+ */
+function resolve(entry, stored) {
+  const fromEnv = env[entry.key]?.trim();
+  if (fromEnv) return { value: fromEnv, source: 'environment' };
+
+  const running = stored[entry.app];
+  if (entry.secured) {
+    // Unreadable by design, so it cannot be carried across. Refusing beats
+    // overwriting a working secret with a mask.
+    if (running?.secured.has(entry.key)) {
+      throw new Error(
+        `${entry.key} is set on the running ${entry.app} and cannot be read back ` +
+          '(Connect masks secured values). Export it so the redeploy keeps it, or ' +
+          'pass --drop-secured to deliberately clear it.'
+      );
+    }
+    return null;
+  }
+
+  const kept = running?.standard.get(entry.key);
+  if (kept !== undefined && kept !== '') return { value: kept, source: 'deployment' };
+
+  if (entry.fallback !== undefined) return { value: entry.fallback, source: 'default' };
+  return null;
+}
+
+function configurations({ applicationUrl, stored = {} }) {
+  const derived = { applicationUrl };
+  const dropSecured = arg('drop-secured', false) !== false;
+  const byApp = Object.fromEntries(
+    APPLICATIONS.map((app) => [app, { standardConfiguration: [], securedConfiguration: [] }])
+  );
+  const report = [];
+
+  for (const entry of CONFIG) {
+    if (!entry.key) continue;
+
+    let resolved;
+    if (entry.derived) {
+      resolved = { value: derived[entry.derived], source: 'this deployment' };
+    } else if (entry.secured && dropSecured && !env[entry.key]?.trim()) {
+      report.push([entry.app, entry.key, 'CLEARED', '--drop-secured']);
+      continue;
+    } else {
+      resolved = resolve(entry, stored);
+    }
+
+    if (!resolved) {
+      // Connect rejects a missing required key with an error that names the
+      // application but not what to do about it. The old code sent '' here,
+      // which satisfies "present" and deploys a Custom Application that can
+      // never load.
+      if (entry.required) {
+        throw new Error(
+          `${entry.key} is required by connect.yaml and has no value. ` +
+            'Register the Custom Application in the Merchant Center and export ' +
+            `${entry.key}, or run \`wire\` against a deployment that already has it.`
+        );
+      }
+      continue;
+    }
+    if (isMasked(resolved.value)) {
+      throw new Error(`refusing to write a masked value for ${entry.key}`);
+    }
+
+    byApp[entry.app][entry.secured ? 'securedConfiguration' : 'standardConfiguration'].push({
+      key: entry.key,
+      value: resolved.value,
     });
+    report.push([
+      entry.app,
+      entry.key,
+      entry.secured ? '(secured)' : resolved.value,
+      resolved.source,
+    ]);
+  }
 
-  const mailSenderSecured = [];
-  if (env.RESEND_API_KEY)
-    mailSenderSecured.push({ key: 'RESEND_API_KEY', value: env.RESEND_API_KEY });
+  for (const [app, key, value, source] of report) {
+    console.log(`  ${app.padEnd(20)} ${key.padEnd(30)} ${String(value).slice(0, 48).padEnd(50)} ${source}`);
+  }
 
-  return [
-    {
-      applicationName: 'mc-app',
-      standardConfiguration: [
-        { key: 'CUSTOM_APPLICATION_ID', value: env.CUSTOM_APPLICATION_ID ?? '' },
-        { key: 'CLOUD_IDENTIFIER', value: env.CLOUD_IDENTIFIER ?? 'gcp-us' },
-        { key: 'ENTRY_POINT_URI_PATH', value: env.ENTRY_POINT_URI_PATH ?? 'abandoned-carts' },
-        { key: 'APPLICATION_URL', value: applicationUrl },
-      ],
-    },
-    {
-      applicationName: 'service',
-      standardConfiguration: [
-        {
-          key: 'ABANDONED_CART_MAX_PER_RUN',
-          value: env.ABANDONED_CART_MAX_PER_RUN ?? '10',
-        },
-        {
-          key: 'ABANDONED_CART_MARK_CARTS',
-          value: env.ABANDONED_CART_MARK_CARTS ?? 'true',
-        },
-        {
-          key: 'ABANDONED_CART_TYPE_KEY',
-          value: env.ABANDONED_CART_TYPE_KEY ?? 'abandoned-cart-custom',
-        },
-      ],
-    },
-    { applicationName: 'job', standardConfiguration: [] },
-    {
-      applicationName: 'mail-sender',
-      standardConfiguration: mailSenderStandard,
-      securedConfiguration: mailSenderSecured,
-    },
-    { applicationName: 'order-created-event', standardConfiguration: [] },
-    // DeploymentConfigurationApplication requires BOTH arrays, even empty.
-  ].map((c) => ({
-    applicationName: c.applicationName,
-    standardConfiguration: c.standardConfiguration ?? [],
-    securedConfiguration: c.securedConfiguration ?? [],
-  }));
+  // DeploymentConfigurationApplication requires BOTH arrays, even empty.
+  return APPLICATIONS.map((app) => ({ applicationName: app, ...byApp[app] }));
 }
 
 /**
@@ -330,6 +432,19 @@ async function cmdWire() {
   // redeploy succeeds, reports the new configuration, and runs the old code.
   const updateConnector = arg('update-connector', false) !== false;
 
+  console.log('configuration this redeploy would write:');
+  const configurationValues = configurations({
+    applicationUrl,
+    stored: storedConfiguration(dep),
+  });
+
+  // Resolving against the running deployment is only trustworthy if it can be
+  // read before it is written, so it can be.
+  if (arg('dry-run', false) !== false) {
+    console.log('\nDry run — nothing sent.');
+    return;
+  }
+
   const updated = await connect('POST', `/${projectKey}/deployments/key=${DEPLOYMENT_KEY}`, {
     version: dep.version,
     actions: [
@@ -339,7 +454,7 @@ async function cmdWire() {
         // name and the redeploy action the other; sending the draft's name
         // here is accepted and ignored, so the redeploy reports success and
         // changes nothing.
-        configurationValues: configurations({ applicationUrl }),
+        configurationValues,
         globalConfiguration: globalConfiguration({ serviceUrl }),
         ...(updateConnector ? { updateConnector: true } : {}),
       },
@@ -492,6 +607,12 @@ if (!run) {
 }
 
 run().catch((e) => {
-  console.error(e.status ? `HTTP ${e.status}` : '', JSON.stringify(e.body ?? e.message).slice(0, 1200));
+  // An API failure is a body worth seeing whole; a refusal from this script
+  // is a sentence worth reading, and JSON-quoting it buries the instruction.
+  if (e.body !== undefined) {
+    console.error(`HTTP ${e.status}`, JSON.stringify(e.body).slice(0, 1200));
+  } else {
+    console.error(e.message);
+  }
   process.exitCode = 1;
 });
