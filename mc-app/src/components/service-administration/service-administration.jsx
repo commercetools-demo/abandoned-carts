@@ -9,6 +9,7 @@ import SecondaryButton from '@commercetools-uikit/secondary-button';
 import { useServiceLogFetcher } from '../../hooks/use-service-log-connector';
 import { useConfigurationFetcher } from '../../hooks/use-configuration-connector';
 import {
+  getServiceUrl,
   processAbandonedCarts,
   testAbandonedCartService,
 } from '../../services/abandoned-cart-http-service';
@@ -126,7 +127,7 @@ const ServiceAdministration = () => {
             <Spacings.Stack scale="s">
               <Text.Detail tone="secondary">
                 <strong>Service URL:</strong>{' '}
-                {window.ENV?.ABANDONED_CART_SERVICE_URL || 'not configured'}
+                {getServiceUrl() || 'not configured'}
               </Text.Detail>
             </Spacings.Stack>
 

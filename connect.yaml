@@ -28,6 +28,15 @@ deployAs:
             real one.
           required: true
           default: https://your_app_hostname.com
+        - key: ABANDONED_CART_SERVICE_URL
+          description: >-
+            The service application's URL, used by the Run now button.
+            Declared here as well as on the job because a Merchant Center
+            application only reaches the browser through `additionalEnv` in
+            custom-application-config.mjs — a container variable it does not
+            name is invisible to the running app.
+          required: true
+          default: http://localhost:8080
 
   # Finds the carts that have gone quiet and records one Custom Object per
   # cart. postDeploy creates the Type that carries the `abandoned` flag, so a
@@ -57,13 +66,20 @@ deployAs:
           required: false
           default: 'true'
 
-  # Runs the service on a schedule. ABANDONED_CART_SERVICE_URL is inherited
-  # and must be set to the service application's deployed URL — see the README.
+  # Runs the service on a schedule.
   - name: job
     applicationType: job
     endpoint: /job
     properties:
       schedule: '*/5 * * * *'
+    configuration:
+      standardConfiguration:
+        - key: ABANDONED_CART_SERVICE_URL
+          description: >-
+            Base URL of the service application. Connect assigns it at
+            deployment, so it is set on the second deploy.
+          required: true
+          default: http://localhost:8080
 
   # Watches for the Custom Object the service writes, and sends the email.
   - name: mail-sender
@@ -124,10 +140,3 @@ inheritAs:
           host. us-central1.gcp for Google Cloud Iowa.
         required: true
         default: us-central1.gcp
-      - key: ABANDONED_CART_SERVICE_URL
-        description: >-
-          Base URL of the service application, used by the job to trigger a
-          run and by the Merchant Center application's Run now button. Connect
-          assigns it at deployment, so it is set on the second deploy.
-        required: true
-        default: http://localhost:8080

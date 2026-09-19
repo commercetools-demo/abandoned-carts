@@ -52,6 +52,18 @@ const config = {
     view: ['view_orders', 'view_key_value_documents', 'view_cart_discounts'],
     manage: ['manage_orders', 'manage_key_value_documents'],
   },
+  /**
+   * The only way a deployment variable reaches the browser.
+   *
+   * Connect sets ABANDONED_CART_SERVICE_URL in the container, which the
+   * build can see and the running application cannot. `additionalEnv` is
+   * what carries a value across that line into `window.app`. Without it the
+   * Run now button has no service to call — and the screen said "Service
+   * URL: not configured" while the deployment had it set all along.
+   */
+  additionalEnv: {
+    abandonedCartServiceUrl: '${env:ABANDONED_CART_SERVICE_URL}',
+  },
   icon: '${path:@commercetools-frontend/assets/application-icons/rocket.svg}',
   mainMenuLink: {
     defaultLabel: 'Abandoned Carts',
