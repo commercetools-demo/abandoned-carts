@@ -6,6 +6,7 @@
  *   node scripts/connect.mjs register --tag 1.1.2
  *   node scripts/connect.mjs deploy
  *   node scripts/connect.mjs wire          # second pass: the assigned URLs
+ *   node scripts/connect.mjs wire --update-connector   # and the newest tag
  *   node scripts/connect.mjs ensure        # prove postDeploy actually ran
  *   node scripts/connect.mjs logs
  *
@@ -324,6 +325,11 @@ async function cmdWire() {
     process.exit(1);
   }
 
+  // A redeploy stays on the connector version it was deployed from, so a
+  // new tag reaches the Project only with `updateConnector`. Without it the
+  // redeploy succeeds, reports the new configuration, and runs the old code.
+  const updateConnector = arg('update-connector', false) !== false;
+
   const updated = await connect('POST', `/${projectKey}/deployments/key=${DEPLOYMENT_KEY}`, {
     version: dep.version,
     actions: [
@@ -335,10 +341,14 @@ async function cmdWire() {
         // changes nothing.
         configurationValues: configurations({ applicationUrl }),
         globalConfiguration: globalConfiguration({ serviceUrl }),
+        ...(updateConnector ? { updateConnector: true } : {}),
       },
     ],
   });
-  console.log(`redeploying with:\n  service  ${serviceUrl}\n  mc-app   ${applicationUrl}`);
+  console.log(
+    `redeploying with:\n  service  ${serviceUrl}\n  mc-app   ${applicationUrl}` +
+      `\n  connector ${updateConnector ? 'moves to the latest staged version' : `stays at v${dep.connector?.version}`}`
+  );
   console.log(`status ${updated.status}`);
   console.log(
     '\nSet the Custom Application\'s Application URL in the Merchant Center to\n' +
