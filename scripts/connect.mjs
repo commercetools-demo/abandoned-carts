@@ -419,14 +419,22 @@ async function cmdEnsure() {
     console.log(`${key}: now pointed at ${topic}`);
   }
 
-  const types = await ctGet(
-    `/types?where=${encodeURIComponent('key = "abandoned-cart-custom"')}`
-  );
-  console.log(
-    types.results.length
-      ? 'abandoned-cart-custom: present'
-      : 'abandoned-cart-custom: MISSING — run the service postDeploy'
-  );
+  // The Type this deployment was configured with, not the default. Reporting
+  // on a Type the deployment does not write is a green light for nothing.
+  const typeKey = env.ABANDONED_CART_TYPE_KEY?.trim() || 'abandoned-cart-custom';
+  const types = await ctGet(`/types?where=${encodeURIComponent(`key = "${typeKey}"`)}`);
+  const type = types.results[0];
+
+  // And the field, not just the Type. On a Project where several applications
+  // share one Type, it exists long before this connector's field is on it, so
+  // "present" would be true while every detection predicate matched nothing.
+  if (!type) {
+    console.log(`${typeKey}: MISSING — run the service postDeploy`);
+  } else if (!type.fieldDefinitions.some((f) => f.name === 'abandoned')) {
+    console.log(`${typeKey}: present, but has no \`abandoned\` field — run the service postDeploy`);
+  } else {
+    console.log(`${typeKey}: present, with the \`abandoned\` field`);
+  }
 }
 
 async function cmdLogs() {
