@@ -35,8 +35,16 @@ system of record — there is no database.
 - Each recorded cart gets an `abandoned-carts/{cartId}` Custom Object holding email,
   total, currency, abandonment date and item count, and — unless
   `ABANDONED_CART_MARK_CARTS=false` — `custom.abandoned = true` on the cart itself.
-  A Cart carries exactly one custom Type, so marking replaces whatever Type it had;
-  the switch exists for Projects where something else already puts one on carts.
+- **Marking never takes a Cart's custom Type away from whoever set it.** A Cart
+  carries exactly one and `setCustomType` replaces rather than merges, so every field
+  the incoming Type does not define is dropped, silently. The connector therefore sets
+  the Type only on a cart that has none, sets just the field on a cart already carrying
+  its own, and leaves a cart carrying anybody else's alone
+  (`markAction` in `service/src/services/abandoned-cart.service.ts`).
+- `ABANDONED_CART_TYPE_KEY` (default `abandoned-cart-custom`) names that Type, so a
+  Project where several applications write on carts can point them all at one Type and
+  have each own its own fields inside it. `specialized-poc` runs this way: the
+  connector, a cart API Extension and a B2B portal all share `specialized-order`.
 - A cart is never recorded twice: the service reads
   `abandoned-carts/{cartId}` before writing. Correctness does not depend on the cart
   flag, which is best-effort and logged when it fails.
@@ -47,9 +55,10 @@ system of record — there is no database.
 - The rules live in the `abandoned-cart/configuration` Custom Object, not in env
   vars, so the window and the copy change from the Merchant Center without a
   redeploy.
-- `postDeploy` creates the `abandoned-cart-custom` Type, and leaves an existing one
-  alone: deleting a Type detaches it from every Cart carrying it, which would
-  un-mark every cart the connector has recorded and mail all of those shoppers again
+- `postDeploy` creates the Type if it is absent and otherwise adds only the
+  `abandoned` field to it, leaving every other field in place. It never deletes one:
+  deleting a Type detaches it from every Cart carrying it, which would un-mark every
+  cart the connector has recorded and mail all of those shoppers again
   (`service/src/connector/actions.ts`).
 
 ## Email (`mail-sender`)
@@ -125,7 +134,7 @@ system of record — there is no database.
   - `abandoned-cart` / `service-log` — the last run
   - `abandoned-carts` / `{cartId}` — one record per cart, carrying its whole
     lifecycle: recorded → emailed → converted
-- Custom Type `abandoned-cart-custom` puts the `abandoned` boolean on carts
+- The Type named by `ABANDONED_CART_TYPE_KEY` puts the `abandoned` boolean on carts
   (resource type `order`, which is what Carts use), driving both the detection
   predicate and the Cart Discount that can be offered in the email.
 - Connect generates one API Client for the connector with five scopes —
