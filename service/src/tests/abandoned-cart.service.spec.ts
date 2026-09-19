@@ -1,4 +1,4 @@
-import { processAbandonedCarts } from '../services/abandoned-cart.service';
+import { markAction, processAbandonedCarts } from '../services/abandoned-cart.service';
 import { createApiRoot } from '../client/create.client';
 
 jest.mock('../client/create.client');
@@ -334,5 +334,47 @@ describe('ABANDONED_CART_MARK_CARTS', () => {
     await processAbandonedCarts();
 
     expect(fake.marked()).toEqual(['cart-1']);
+  });
+});
+
+
+// A Cart carries exactly one custom Type and `setCustomType` REPLACES
+// rather than merges: every field the incoming Type does not define is
+// dropped, silently, and the owner of that data has no way to know.
+describe('markAction', () => {
+  const cart = (custom?: { type: { id: string } }) =>
+    ({ id: 'cart-1', version: 1, lineItems: [], custom }) as never;
+
+  afterEach(() => {
+    delete process.env.ABANDONED_CART_TYPE_KEY;
+  });
+
+  it('sets the Type and the field on a cart that has neither', () => {
+    expect(markAction(cart(), 'type-1')).toEqual({
+      action: 'setCustomType',
+      type: { typeId: 'type', key: 'abandoned-cart-custom' },
+      fields: { abandoned: true },
+    });
+  });
+
+  it('sets only the field when the cart already carries our Type', () => {
+    expect(markAction(cart({ type: { id: 'type-1' } }), 'type-1')).toEqual({
+      action: 'setCustomField',
+      name: 'abandoned',
+      value: true,
+    });
+  });
+
+  // The one that matters. specialized-poc has an API Extension that puts
+  // its own Type on carts, and replacing it dropped that Extension's field.
+  it('declines to touch a cart carrying another application Type', () => {
+    expect(markAction(cart({ type: { id: 'someone-elses' } }), 'type-1')).toBeNull();
+  });
+
+  it('honours a configured Type key when it has to create one', () => {
+    process.env.ABANDONED_CART_TYPE_KEY = 'specialized-order';
+    expect(markAction(cart(), null)).toMatchObject({
+      type: { typeId: 'type', key: 'specialized-order' },
+    });
   });
 });

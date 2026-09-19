@@ -56,6 +56,15 @@ deployAs:
             run. What the cap skipped is written to the service log.
           required: false
           default: '10'
+        - key: ABANDONED_CART_TYPE_KEY
+          description: >-
+            Key of the custom Type that carries the `abandoned` field. A Cart
+            carries exactly one Type, so point this at whatever Type the
+            Project already puts on carts and this connector adds its field
+            to that one instead of competing for the slot. Left unset, the
+            connector owns a Type of its own.
+          required: false
+          default: abandoned-cart-custom
         - key: ABANDONED_CART_MARK_CARTS
           description: >-
             Whether to write custom.abandoned onto the cart. A Cart carries
