@@ -29,6 +29,26 @@ const PERMISSIONS = {
 };
 
 /**
+ * The Merchant Center serves a Custom Application under a strict
+ * Content-Security-Policy, and `connect-src` does not include this
+ * application's own service. Without the host declared here the browser
+ * refuses the request before it is made — `TypeError: Failed to fetch`,
+ * with CORS on the service answering perfectly and a `curl` to the same URL
+ * returning 200, which sends you looking at the wrong end of the wire.
+ *
+ * An ORIGIN, not the configured URL: CSP matches a source that carries a
+ * path against that path exactly, so `https://host/abandoned-cart` would
+ * not permit `/abandoned-cart/process`.
+ */
+const serviceOrigin = (() => {
+  try {
+    return new URL(process.env.ABANDONED_CART_SERVICE_URL).origin;
+  } catch {
+    return undefined;
+  }
+})();
+
+/**
  * @type {import('@commercetools-frontend/application-config').ConfigOptionsForCustomApplication}
  */
 const config = {
@@ -63,6 +83,11 @@ const config = {
    */
   additionalEnv: {
     abandonedCartServiceUrl: '${env:ABANDONED_CART_SERVICE_URL}',
+  },
+  headers: {
+    csp: {
+      'connect-src': serviceOrigin ? [serviceOrigin] : [],
+    },
   },
   icon: '${path:@commercetools-frontend/assets/application-icons/rocket.svg}',
   mainMenuLink: {
