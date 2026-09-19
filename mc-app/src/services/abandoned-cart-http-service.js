@@ -4,16 +4,22 @@ import React from 'react';
  * Talking to the abandoned cart service.
  *
  * The service is a separate Connect application with its own URL, handed to
- * this one as ABANDONED_CART_SERVICE_URL at deployment. Paths are resolved
- * with `new URL` against that value so it works whether it was configured as
- * the origin or as the full endpoint URL Connect reports — the two differ by
- * a path segment, and getting it wrong is a 404 that reads like an outage.
+ * this one as ABANDONED_CART_SERVICE_URL at deployment and carried into the
+ * browser by `additionalEnv` in custom-application-config.mjs — a container
+ * variable the config does not name never reaches this code.
+ *
+ * Paths are resolved with `new URL` against that value so it works whether
+ * it was configured as the origin or as the full endpoint URL Connect
+ * reports — the two differ by a path segment, and getting it wrong is a 404
+ * that reads like an outage.
  */
+export const getServiceUrl = () => window.app?.abandonedCartServiceUrl || '';
+
 const serviceUrl = (path) => {
-  const base = window.ENV?.ABANDONED_CART_SERVICE_URL;
+  const base = getServiceUrl();
   if (!base) {
     throw new Error(
-      'ABANDONED_CART_SERVICE_URL is not configured on this deployment.'
+      'The service URL is not configured. Set ABANDONED_CART_SERVICE_URL on the deployment.'
     );
   }
   return new URL(path, base).toString();
