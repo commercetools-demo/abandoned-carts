@@ -3,11 +3,11 @@ dotenv.config();
 
 import { createApiRoot } from '../client/create.client';
 import { assertError } from '../utils/assert.utils';
-import { createAbandonedCartType } from './actions';
+import { ensureAbandonedCartType } from './actions';
 
 async function postDeploy(): Promise<void> {
   const apiRoot = createApiRoot();
-  await createAbandonedCartType(apiRoot);
+  await ensureAbandonedCartType(apiRoot);
 }
 
 async function run(): Promise<void> {

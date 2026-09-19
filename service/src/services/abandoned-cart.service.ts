@@ -1,8 +1,8 @@
-import { Cart } from '@commercetools/platform-sdk';
+import { Cart, CartUpdateAction } from '@commercetools/platform-sdk';
 import { createApiRoot } from '../client/create.client';
 import { logger } from '../utils/logger.utils';
 import CustomError from '../errors/custom.error';
-import { ABANDONED_CART_TYPE_KEY } from '../connector/actions';
+import { ABANDONED_FIELD, abandonedCartTypeKey } from '../connector/actions';
 
 const ABANDONED_CARTS_CONTAINER = 'abandoned-carts';
 const CONFIG_CONTAINER = 'abandoned-cart';
@@ -107,7 +107,7 @@ async function alreadyRecorded(cartId: string): Promise<boolean> {
  * shopper has still been emailed exactly once, and `alreadyRecorded` keeps
  * the next run from doing it again.
  */
-async function recordCart(cart: Cart, email: string): Promise<void> {
+async function recordCart(cart: Cart, email: string, ourTypeId: string | null): Promise<void> {
   const cartTotal = cart.totalPrice?.centAmount
     ? (cart.totalPrice.centAmount / 100).toFixed(2)
     : '0.00';
@@ -132,22 +132,21 @@ async function recordCart(cart: Cart, email: string): Promise<void> {
 
   if (!shouldMarkCarts()) return;
 
+  const action = markAction(cart, ourTypeId);
+  if (!action) {
+    logger.warn(
+      `Recorded cart ${cart.id} but left its custom Type ` +
+        `${cart.custom?.type?.obj?.key ?? cart.custom?.type?.id} alone — ` +
+        'set ABANDONED_CART_TYPE_KEY to the Type this Project puts on carts.'
+    );
+    return;
+  }
+
   try {
     await createApiRoot()
       .carts()
       .withId({ ID: cart.id })
-      .post({
-        body: {
-          version: cart.version,
-          actions: [
-            {
-              action: 'setCustomType',
-              type: { typeId: 'type', key: ABANDONED_CART_TYPE_KEY },
-              fields: { abandoned: true },
-            },
-          ],
-        },
-      })
+      .post({ body: { version: cart.version, actions: [action] } })
       .execute();
   } catch (error) {
     logger.error(
@@ -155,6 +154,58 @@ async function recordCart(cart: Cart, email: string): Promise<void> {
         error instanceof Error ? error.message : 'unknown error'
       }`
     );
+  }
+}
+
+/**
+ * How to mark this cart, or `null` for "do not touch it".
+ *
+ * A Cart carries exactly one custom Type and `setCustomType` REPLACES rather
+ * than merges: every field the incoming Type does not define is dropped.
+ * So the only cart it is safe to call it on is one with no Type at all.
+ *
+ *   - no Type        → set ours, with the field
+ *   - our Type       → set the field only, leaving every other field intact
+ *   - somebody else's → nothing, and say so
+ *
+ * The third case is the one that matters. Replacing a Type this connector
+ * does not recognise discards another application's data, and the owner of
+ * that data has no way to know it happened.
+ */
+export function markAction(cart: Cart, ourTypeId: string | null): CartUpdateAction | null {
+  const existing = cart.custom?.type;
+
+  if (!existing) {
+    return {
+      action: 'setCustomType',
+      type: { typeId: 'type', key: abandonedCartTypeKey() },
+      fields: { [ABANDONED_FIELD]: true },
+    };
+  }
+
+  if (ourTypeId && existing.id === ourTypeId) {
+    return { action: 'setCustomField', name: ABANDONED_FIELD, value: true };
+  }
+
+  return null;
+}
+
+/**
+ * The id of the configured Type, resolved once per run.
+ *
+ * Comparing ids rather than keys means the cart query does not have to
+ * expand `custom.type` on every cart to find out whose Type it is.
+ */
+async function resolveTypeId(): Promise<string | null> {
+  const key = abandonedCartTypeKey();
+  try {
+    const { body } = await createApiRoot()
+      .types()
+      .get({ queryArgs: { where: `key = "${key}"`, limit: 1 } })
+      .execute();
+    return body.results[0]?.id ?? null;
+  } catch {
+    return null;
   }
 }
 
@@ -227,6 +278,9 @@ export const processAbandonedCarts = async (): Promise<RunSummary> => {
       'custom(fields(abandoned != true))',
     ].join(' and ');
 
+    // Resolved once: every cart in the run compares against the same id.
+    const ourTypeId = shouldMarkCarts() ? await resolveTypeId() : null;
+
     let offset = 0;
     let candidates = 0;
     let capReached = false;
@@ -276,7 +330,7 @@ export const processAbandonedCarts = async (): Promise<RunSummary> => {
             continue;
           }
 
-          await recordCart(cart, email);
+          await recordCart(cart, email, ourTypeId);
           totalCreated++;
           logger.info(`Recorded abandoned cart ${cart.id} for ${email}`);
         } catch (error) {
