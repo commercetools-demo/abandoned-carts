@@ -218,6 +218,26 @@ export function fromHtml(html) {
 
 // ─── The editor ───────────────────────────────────────────────────────────
 
+/**
+ * The two lines the whole feature rests on.
+ *
+ * `isVoid` is what makes a chip indivisible: Slate never descends into a
+ * void node, so a backspace beside one removes the node rather than the
+ * last character of its text. `isInline` is what lets it sit in a sentence
+ * instead of on a line of its own.
+ *
+ * Exported and applied separately from the component so the behaviour can
+ * be tested through Slate's own transforms. jsdom does not implement
+ * contentEditable, so a test that typed into the rendered editor would
+ * prove nothing about deletion.
+ */
+export function withPlaceholders(editor) {
+  const { isInline, isVoid } = editor;
+  editor.isInline = (el) => (el.type === 'variable' ? true : isInline(el));
+  editor.isVoid = (el) => (el.type === 'variable' ? true : isVoid(el));
+  return withHistory(withReact(editor));
+}
+
 const Chip = ({ attributes, children, element }) => {
   const selected = useSelected();
   return (
@@ -395,14 +415,7 @@ Toolbar.propTypes = { formatting: PropTypes.bool };
 const RichEmailEditor = ({ value, onChange, mode = 'html' }) => {
   const isText = mode === 'text';
 
-  const editor = useMemo(() => {
-    const e = withHistory(withReact(createEditor()));
-    const { isInline, isVoid } = e;
-    // The two lines the whole feature rests on.
-    e.isInline = (el) => (el.type === 'variable' ? true : isInline(el));
-    e.isVoid = (el) => (el.type === 'variable' ? true : isVoid(el));
-    return e;
-  }, []);
+  const editor = useMemo(() => withPlaceholders(createEditor()), []);
 
   const [initial] = useState(() =>
     isText ? fromText(value) : fromHtml(value)
