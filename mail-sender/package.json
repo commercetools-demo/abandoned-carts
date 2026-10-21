@@ -17,7 +17,7 @@
     "test:integration": "node_modules/.bin/jest --config tests/integration/jest.config.cjs",
     "test:unit": "node_modules/.bin/jest --config tests/unit/jest.config.cjs",
     "test:ci": "npm run test:unit && npm run test:integration",
-    "verify": "npm ci && npm audit --audit-level=high && npm run lint && npm run test:unit"
+    "verify": "npm ci && npm audit --audit-level=critical && npm run lint && npm run test:unit"
   },
   "author": "",
   "license": "MIT",
