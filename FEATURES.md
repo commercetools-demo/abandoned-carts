@@ -184,10 +184,11 @@ system of record — there is no database.
 ## Local gate
 
 `./scripts/predeploy.sh` runs what Connect runs, in Connect's order: install from
-the lockfile, `npm audit --audit-level=high`, typecheck, lint, build, unit tests —
+the lockfile, `npm audit --audit-level=critical`, typecheck, lint, build, unit tests —
 36 tests across four applications. The audit is in there because Connect's SCA scan
 is what rejects a Connector and its report names only the stage that failed. The
-scan reads the whole repository, not just the applications `connect.yaml` names.
+scan covers development dependencies as well as production ones, and fails on a
+critical finding, so the gate matches it on both.
 
 `scripts/connect.mjs` drives registration and deployment: `status`, `register`,
 `deploy`, `wire`, `logs`.

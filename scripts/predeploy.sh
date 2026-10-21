@@ -7,10 +7,10 @@
 #   ./scripts/predeploy.sh mc-app     one of them
 #
 # It runs what Connect runs, in Connect's order: install from the lockfile,
-# audit at high, typecheck, lint, build, tests. The audit is in here because
-# Connect's SCA scan rejected this connector for exactly that and the report
-# says only which stage failed — a five-minute round trip for a question
-# `npm audit` answers in two seconds.
+# audit, typecheck, lint, build, tests. The audit is in here because
+# Connect's SCA scan is what rejects a Connector and the report says only
+# which stage failed — a five-minute round trip for a question `npm audit`
+# answers in two seconds.
 #
 # Not in here: anything needing a running server, real credentials, or
 # minutes rather than seconds. Those get their own deliberate command.
@@ -51,7 +51,17 @@ install() {
 for app in "${APPS[@]}"; do
   banner "$app"
   install "$ROOT/$app"
-  run "$app" audit sh -c "cd '$ROOT/$app' && npm audit --audit-level=high >/dev/null"
+  # Connect's SCA scan "scans your Connector's open-source dependencies and
+  # development dependencies. Any critical finding fails the SCA."
+  #   https://docs.commercetools.com/connect/validation-pipeline#software-composition-analysis-sca
+  # This matches it on both axes. Development dependencies stay in scope,
+  # because `--omit=dev` would go green here and still be rejected there.
+  # The threshold is critical because that is the one Connect enforces:
+  # gating at high stops every build on advisories Connect accepts, and one
+  # of those cannot be cleared at all — GHSA-vfj7-8cjw-p6xm (braces) has no
+  # fixed version at any release, and reaches jest, nodemon and mc-scripts
+  # through micromatch and chokidar.
+  run "$app" audit sh -c "cd '$ROOT/$app' && npm audit --audit-level=critical >/dev/null"
 
   case "$app" in
     service|job|order-created-event)
