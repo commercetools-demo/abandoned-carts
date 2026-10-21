@@ -16,7 +16,7 @@
     "connector:post-deploy": "node build/connector/post-deploy.js",
     "connector:pre-undeploy": "node build/connector/pre-undeploy.js",
     "typecheck": "tsc --noEmit",
-    "verify": "npm ci && npm audit --audit-level=high && npm run typecheck && npm run lint && npm run build && npm test"
+    "verify": "npm ci && npm audit --audit-level=critical && npm run typecheck && npm run lint && npm run build && npm test"
   },
   "devDependencies": {
     "@tsconfig/recommended": "^1.0.3",

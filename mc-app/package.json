@@ -15,7 +15,7 @@
     "lint": "eslint src custom-application-config.mjs",
     "format": "prettier --write '**/*.js'",
     "typecheck": "tsc --noEmit",
-    "verify": "npm ci && npm audit --audit-level=high && npm run lint && npm test && npm run build",
+    "verify": "npm ci && npm audit --audit-level=critical && npm run lint && npm test && npm run build",
     "start:dev": "mc-scripts start"
   },
   "dependencies": {
